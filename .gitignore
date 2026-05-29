@@ -1,0 +1,35 @@
+# ---- IntelliJ / Android Studio ----
+*.iml
+.idea/caches
+.idea/libraries
+.idea/modules.xml
+.idea/workspace.xml
+.idea/navEditor.xml
+.idea/assetWizardSettings.xml
+.idea/inspectionProfiles/
+
+# ---- Gradle ----
+.gradle
+/build
+
+# ---- Secrets ----
+app/src/main/assets/config.json
+
+# ---- Android SDK ----
+local.properties
+/captures
+
+# ---- NDK / CMake ----
+.externalNativeBuild
+.cxx
+
+# ---- Generated libs (gomobile output) ----
+app/libs/*.aar
+app/libs/*.jar
+
+# ---- Docker ----
+.env
+dist/
+
+# ---- macOS ----
+.DS_Store
