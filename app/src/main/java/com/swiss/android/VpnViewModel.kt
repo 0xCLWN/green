@@ -105,7 +105,9 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
             "1.1.1.1"
-        } catch (_: Exception) { "1.1.1.1" }
+        } catch (_: Exception) {
+            "1.1.1.1"
+        }
     }
 
     private fun nameFromJsonConfig(json: String): String {
@@ -126,7 +128,9 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun clearAddError() { _addError.value = null }
+    fun clearAddError() {
+        _addError.value = null
+    }
 
     fun deleteConfig(config: Config) {
         viewModelScope.launch { dao.delete(config) }
@@ -141,16 +145,19 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
                 // this picks up any config schema improvements from app updates,
                 // and also performs DNS pre-resolution before the TUN is established.
                 data class Resolved(val configJson: String, val dnsServer: String)
+
                 val resolved = withContext(Dispatchers.IO) {
                     when {
                         config.vlessLink != null -> Resolved(
                             configJson = Libswiss.vlessKeyToXrayJson(config.vlessLink),
                             dnsServer = Libswiss.vlessKeyDnsServer(config.vlessLink),
                         )
+
                         config.configJson != null -> Resolved(
                             configJson = config.configJson,
                             dnsServer = dnsServerFromJson(config.configJson),
                         )
+
                         else -> throw IllegalStateException("config has neither vlessLink nor configJson")
                     }
                 }

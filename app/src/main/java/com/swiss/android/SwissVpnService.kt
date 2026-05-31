@@ -12,7 +12,6 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import go.Seq
 import libswiss.Libswiss
-import libswiss.Protector
 import java.io.File
 
 @SuppressLint("VpnServicePolicy") // its intended
@@ -42,13 +41,16 @@ class SwissVpnService : VpnService() {
                 intent.getStringExtra(EXTRA_CONFIG_JSON),
                 intent.getStringExtra(EXTRA_DNS_SERVER) ?: "1.1.1.1",
             )
+
             ACTION_STOP -> stopVpn()
         }
         return START_STICKY
     }
 
     private fun startVpn(configJson: String?, dnsServer: String) {
-        if (configJson == null) { stopVpn(); return }
+        if (configJson == null) {
+            stopVpn(); return
+        }
 
         startForeground(NOTIF_ID, buildNotification("Connecting…"))
         try {

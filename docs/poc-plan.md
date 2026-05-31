@@ -17,10 +17,10 @@ No config UI, no server management. Just: open app → tap connect → traffic i
 
 Two native libraries needed:
 
-| Library | What it is | Where to get |
-|---|---|---|
-| `libxray.aar` | xray-core compiled via gomobile | XTLS/libxray releases or v2rayNG APK |
-| `libtun2socks.so` | tun2socks for arm64 | Extracted from v2rayNG APK (`lib/arm64-v8a/`) |
+| Library           | What it is                      | Where to get                                  |
+|-------------------|---------------------------------|-----------------------------------------------|
+| `libxray.aar`     | xray-core compiled via gomobile | XTLS/libxray releases or v2rayNG APK          |
+| `libtun2socks.so` | tun2socks for arm64             | Extracted from v2rayNG APK (`lib/arm64-v8a/`) |
 
 Action: download latest v2rayNG APK, unzip it, pull both files out.
 
@@ -37,6 +37,7 @@ app/
 ```
 
 `build.gradle.kts`:
+
 ```kotlin
 dependencies {
     implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar"))))
@@ -89,6 +90,7 @@ The config must have a SOCKS5 inbound so tun2socks has somewhere to connect:
 `VpnService` subclass — the core of the app.
 
 Responsibilities:
+
 - Read config from assets, start xray via libxray API
 - Build the TUN interface via `VpnService.Builder`
 - Start tun2socks, hand it the TUN file descriptor
