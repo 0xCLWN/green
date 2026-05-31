@@ -22,9 +22,12 @@ class SwissVpnService : VpnService() {
         const val ACTION_STOP = "com.swiss.android.STOP"
         const val EXTRA_CONFIG_JSON = "config_json"
         const val EXTRA_DNS_SERVER = "dns_server"
+        const val EXTRA_SOCKS_PORT = "socks_port"
+        const val EXTRA_SOCKS_USER = "socks_user"
+        const val EXTRA_SOCKS_PASS = "socks_pass"
+        const val EXTRA_ALLOWED_APPS = "allowed_apps"
         private const val NOTIF_ID = 1
         private const val NOTIF_CHANNEL = "swiss_vpn"
-        private const val SOCKS_PORT = 10808
         private const val TUN_ADDRESS = "198.18.0.1"
     }
 
@@ -40,6 +43,10 @@ class SwissVpnService : VpnService() {
             ACTION_START -> startVpn(
                 intent.getStringExtra(EXTRA_CONFIG_JSON),
                 intent.getStringExtra(EXTRA_DNS_SERVER) ?: "1.1.1.1",
+                intent.getIntExtra(EXTRA_SOCKS_PORT, 10808),
+                intent.getStringExtra(EXTRA_SOCKS_USER) ?: "",
+                intent.getStringExtra(EXTRA_SOCKS_PASS) ?: "",
+                intent.getStringArrayListExtra(EXTRA_ALLOWED_APPS) ?: emptyList(),
             )
 
             ACTION_STOP -> stopVpn()
@@ -47,7 +54,7 @@ class SwissVpnService : VpnService() {
         return START_STICKY
     }
 
-    private fun startVpn(configJson: String?, dnsServer: String) {
+    private fun startVpn(configJson: String?, dnsServer: String, socksPort: Int, socksUser: String, socksPass: String, allowedApps: List<String>) {
         if (configJson == null) {
             stopVpn(); return
         }
@@ -66,12 +73,13 @@ class SwissVpnService : VpnService() {
                 .addRoute("0.0.0.0", 0)
                 .addRoute("::", 0)
                 .addDnsServer(dnsServer)
+                .also { b -> allowedApps.forEach { pkg -> runCatching { b.addAllowedApplication(pkg) } } }
                 .establish()
                 ?: return stopVpn()
 
             Libswiss.start(configJson)
 
-            TProxyService.TProxyStartService(writeTunConfig(), vpnInterface!!.fd)
+            TProxyService.TProxyStartService(writeTunConfig(socksPort, socksUser, socksPass), vpnInterface!!.fd)
 
             startForeground(NOTIF_ID, buildNotification("Connected"))
             VpnState.status.value = VpnStatus.CONNECTED
@@ -90,22 +98,26 @@ class SwissVpnService : VpnService() {
         stopSelf()
     }
 
-    private fun writeTunConfig(): String {
-        val yaml = """
-            tunnel:
-              mtu: 1500
-              ipv4: $TUN_ADDRESS
-            socks5:
-              port: $SOCKS_PORT
-              address: 127.0.0.1
-              udp: udp
-            misc:
-              task-stack-size: 81920
-              connect-timeout: 5000
-              read-write-timeout: 60000
-              log-file: stderr
-              log-level: warn
-        """.trimIndent()
+    private fun writeTunConfig(socksPort: Int, socksUser: String, socksPass: String): String {
+        val yaml = buildString {
+            appendLine("tunnel:")
+            appendLine("  mtu: 1500")
+            appendLine("  ipv4: $TUN_ADDRESS")
+            appendLine("socks5:")
+            appendLine("  port: $socksPort")
+            appendLine("  address: 127.0.0.1")
+            appendLine("  udp: udp")
+            if (socksUser.isNotEmpty()) {
+                appendLine("  username: $socksUser")
+                appendLine("  password: $socksPass")
+            }
+            appendLine("misc:")
+            appendLine("  task-stack-size: 81920")
+            appendLine("  connect-timeout: 5000")
+            appendLine("  read-write-timeout: 60000")
+            appendLine("  log-file: stderr")
+            append("  log-level: warn")
+        }
         return File(filesDir, "tun.yaml").also { it.writeText(yaml) }.absolutePath
     }
 

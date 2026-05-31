@@ -2,6 +2,8 @@ package com.swiss.android
 
 import android.Manifest
 import android.app.Activity
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -11,6 +13,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,37 +24,54 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.core.graphics.createBitmap
 import com.swiss.android.data.Config
 import com.swiss.android.ui.theme.SwissTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     private val viewModel: VpnViewModel by viewModels()
@@ -81,7 +102,9 @@ fun MainScreen(viewModel: VpnViewModel) {
     val selectedId by viewModel.selectedId.collectAsState()
     val addError by viewModel.addError.collectAsState()
 
+    val allowedApps by viewModel.allowedApps.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
+    var showAppPicker by remember { mutableStateOf(false) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -129,6 +152,27 @@ fun MainScreen(viewModel: VpnViewModel) {
                 Text(if (status == VpnStatus.CONNECTED) "Disconnect" else "Connect")
             }
 
+            if (status == VpnStatus.DISCONNECTED) {
+                Spacer(Modifier.height(12.dp))
+                HorizontalDivider()
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showAppPicker = true }
+                        .padding(vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Split tunneling", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        if (allowedApps.isEmpty()) "All apps" else "${allowedApps.size} apps",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                HorizontalDivider()
+            }
+
             Spacer(Modifier.height(24.dp))
 
             if (configs.isEmpty()) {
@@ -156,6 +200,17 @@ fun MainScreen(viewModel: VpnViewModel) {
                 }
             }
         }
+    }
+
+    if (showAppPicker) {
+        AppPickerDialog(
+            allowedApps = allowedApps,
+            onDismiss = { showAppPicker = false },
+            onConfirm = {
+                viewModel.setAllowedApps(it)
+                showAppPicker = false
+            },
+        )
     }
 
     if (showAddDialog) {
@@ -209,6 +264,159 @@ fun ConfigCard(
                         contentDescription = "Delete",
                         tint = MaterialTheme.colorScheme.outline
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AppPickerDialog(
+    allowedApps: Set<String>,
+    onDismiss: () -> Unit,
+    onConfirm: (Set<String>) -> Unit,
+) {
+    val context = LocalContext.current
+    val pm = context.packageManager
+    var apps by remember { mutableStateOf<List<AppInfo>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var selected by remember(allowedApps) { mutableStateOf(allowedApps) }
+    var query by remember { mutableStateOf("") }
+    val filtered = remember(apps, query) {
+        if (query.isBlank()) apps
+        else apps.filter {
+            it.label.contains(query, ignoreCase = true) ||
+                    it.packageName.contains(query, ignoreCase = true)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        apps = withContext(Dispatchers.IO) {
+            pm.getInstalledApplications(PackageManager.GET_META_DATA)
+                .filter {
+                    it.flags and ApplicationInfo.FLAG_SYSTEM == 0 ||
+                    it.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP != 0
+                }
+                .map { AppInfo(it.packageName, pm.getApplicationLabel(it).toString()) }
+                .sortedBy { it.label.lowercase() }
+        }
+        loading = false
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp),
+            shape = MaterialTheme.shapes.large,
+            tonalElevation = AlertDialogDefaults.TonalElevation,
+        ) {
+            Column {
+                Text(
+                    "Split tunneling",
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.padding(
+                        start = 24.dp,
+                        top = 24.dp,
+                        end = 24.dp,
+                        bottom = 16.dp
+                    ),
+                )
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    placeholder = { Text("Search") },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+                if (loading) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(120.dp),
+                        contentAlignment = Alignment.Center,
+                    ) { CircularProgressIndicator() }
+                } else {
+                    LazyColumn(Modifier.heightIn(max = 480.dp)) {
+                        items(filtered, key = { it.packageName }) { app ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        selected = if (app.packageName in selected)
+                                            selected - app.packageName
+                                        else
+                                            selected + app.packageName
+                                    }
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                val icon by produceState<BitmapPainter?>(null, app.packageName) {
+                                    value = withContext(Dispatchers.IO) {
+                                        runCatching {
+                                            val d = pm.getApplicationIcon(app.packageName)
+                                            val bmp = createBitmap(
+                                                d.intrinsicWidth.coerceAtLeast(1),
+                                                d.intrinsicHeight.coerceAtLeast(1),
+                                            )
+                                            android.graphics.Canvas(bmp).also { c ->
+                                                d.setBounds(0, 0, c.width, c.height)
+                                                d.draw(c)
+                                            }
+                                            BitmapPainter(bmp.asImageBitmap())
+                                        }.getOrNull()
+                                    }
+                                }
+                                val painter = icon
+                                if (painter != null) {
+                                    Image(
+                                        painter = painter,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(36.dp),
+                                    )
+                                } else {
+                                    Spacer(Modifier.size(36.dp))
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(app.label, style = MaterialTheme.typography.bodyMedium)
+                                    Text(
+                                        app.packageName,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.outline,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                                Checkbox(
+                                    checked = app.packageName in selected,
+                                    onCheckedChange = { checked ->
+                                        selected = if (checked) selected + app.packageName
+                                        else selected - app.packageName
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (selected.isNotEmpty()) {
+                        TextButton(onClick = { selected = emptySet() }) { Text("Clear") }
+                    }
+                    Spacer(Modifier.weight(1f))
+                    TextButton(onClick = onDismiss) { Text("Cancel") }
+                    Spacer(Modifier.width(8.dp))
+                    Button(onClick = { onConfirm(selected) }) { Text("Save") }
                 }
             }
         }
