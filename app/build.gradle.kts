@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -23,6 +24,15 @@ android {
         ndk {
             abiFilters += "arm64-v8a"
         }
+
+        val defaultKeys = rootProject.file("default_keys.txt")
+            .takeIf { it.exists() }
+            ?.readLines()
+            ?.map { it.trim() }
+            ?.filter { it.isNotBlank() && !it.startsWith("#") }
+            ?.joinToString("|")
+            ?: ""
+        buildConfigField("String", "DEFAULT_VLESS_KEYS", "\"$defaultKeys\"")
     }
 
     buildTypes {
@@ -40,6 +50,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     externalNativeBuild {
@@ -58,7 +69,10 @@ android {
 
 val buildGoLib = tasks.register<Exec>("buildGoLib") {
     workingDir = file("${rootDir}/go")
-    environment("ANDROID_HOME", System.getenv("ANDROID_HOME") ?: "${System.getProperty("user.home")}/Library/Android/sdk")
+    environment(
+        "ANDROID_HOME",
+        System.getenv("ANDROID_HOME") ?: "${System.getProperty("user.home")}/Library/Android/sdk"
+    )
     commandLine(
         "${System.getProperty("user.home")}/go/bin/gomobile", "bind",
         "-target=android/arm64",
@@ -84,6 +98,10 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.material.icons)
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

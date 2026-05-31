@@ -1,5 +1,6 @@
 package com.swiss.android
 
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -14,11 +15,14 @@ import libswiss.Libswiss
 import libswiss.Protector
 import java.io.File
 
+@SuppressLint("VpnServicePolicy") // its intended
 class SwissVpnService : VpnService() {
 
     companion object {
         const val ACTION_START = "com.swiss.android.START"
         const val ACTION_STOP = "com.swiss.android.STOP"
+        const val EXTRA_CONFIG_JSON = "config_json"
+        const val EXTRA_DNS_SERVER = "dns_server"
         private const val NOTIF_ID = 1
         private const val NOTIF_CHANNEL = "swiss_vpn"
         private const val SOCKS_PORT = 10808
@@ -34,19 +38,24 @@ class SwissVpnService : VpnService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_START -> startVpn()
+            ACTION_START -> startVpn(
+                intent.getStringExtra(EXTRA_CONFIG_JSON),
+                intent.getStringExtra(EXTRA_DNS_SERVER) ?: "1.1.1.1",
+            )
             ACTION_STOP -> stopVpn()
         }
         return START_STICKY
     }
 
-    private fun startVpn() {
+    private fun startVpn(configJson: String?, dnsServer: String) {
+        if (configJson == null) { stopVpn(); return }
+
         startForeground(NOTIF_ID, buildNotification("Connecting…"))
         try {
             Seq.setContext(applicationContext)
 
             // Protect xray's outbound sockets so they bypass the TUN and don't loop.
-            Libswiss.setProtector(Protector { fd -> protect(fd) })
+            Libswiss.setProtector { fd -> protect(fd) }
 
             vpnInterface = Builder()
                 .setSession("swiss")
@@ -54,12 +63,11 @@ class SwissVpnService : VpnService() {
                 .addAddress(TUN_ADDRESS, 30)
                 .addRoute("0.0.0.0", 0)
                 .addRoute("::", 0)
-                .addDnsServer("1.1.1.1")
+                .addDnsServer(dnsServer)
                 .establish()
                 ?: return stopVpn()
 
-            val config = assets.open("config.json").bufferedReader().readText()
-            Libswiss.start(config)
+            Libswiss.start(configJson)
 
             TProxyService.TProxyStartService(writeTunConfig(), vpnInterface!!.fd)
 

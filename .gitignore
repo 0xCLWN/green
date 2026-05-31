@@ -13,7 +13,9 @@
 /build
 
 # ---- Secrets ----
-app/src/main/assets/config.json
+default_keys.txt
+*.jks
+*.p12
 
 # ---- Android SDK ----
 local.properties
