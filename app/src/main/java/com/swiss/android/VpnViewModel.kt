@@ -148,17 +148,49 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
 
     private suspend fun seedDefaultConfigs() {
         if (prefs.getBoolean(Prefs.DEFAULTS_SEEDED, false)) return
-        BuildConfig.DEFAULT_VLESS_KEYS
-            .split("|")
-            .filter { it.isNotBlank() }
-            .forEach { link ->
-                runCatching {
-                    val name = link.substringAfterLast("#", "").ifBlank {
-                        link.substringAfter("@").substringBefore("?")
-                    }
-                    dao.insert(Config(name = name, vlessLink = link))
+
+        // Apply default_config.json from assets if present
+        runCatching {
+            getApplication<Application>().assets.open("default_config.json")
+                .bufferedReader().readText()
+        }.onSuccess { raw ->
+            runCatching {
+                val obj = org.json.JSONObject(raw)
+
+                obj.optString("subscription_url").takeIf { it.isNotBlank() }?.let { url ->
+                    val name = runCatching { java.net.URL(url).host }.getOrElse { url.take(30) }
+                    subDao.insert(com.swiss.android.data.Subscription(url = url, name = name))
                 }
+
+                obj.optJSONArray("vless_keys")?.let { arr ->
+                    for (i in 0 until arr.length()) {
+                        val link = arr.getString(i).trim()
+                        if (link.startsWith("vless://")) runCatching {
+                            Libswiss.validateVlessKey(link)
+                            dao.insert(Config(name = linkName(link), vlessLink = link))
+                        }
+                    }
+                }
+
+                prefs.edit {
+                    if (obj.has("auto_connect")) putBoolean(Prefs.AUTO_CONNECT, obj.getBoolean("auto_connect"))
+                    if (obj.has("notify")) putBoolean(Prefs.NOTIFY, obj.getBoolean("notify"))
+                    if (obj.has("geo_enabled")) putBoolean(Prefs.GEO_ENABLED, obj.getBoolean("geo_enabled"))
+                    obj.optString("geo_geoip_url").takeIf { it.isNotBlank() }?.let { putString(Prefs.GEO_GEOIP_URL, it) }
+                    obj.optString("geo_geosite_url").takeIf { it.isNotBlank() }?.let { putString(Prefs.GEO_GEOSITE_URL, it) }
+                }
+
+                // Sync StateFlows with newly written prefs
+                _autoConnect.value = prefs.getBoolean(Prefs.AUTO_CONNECT, false)
+                _notify.value = prefs.getBoolean(Prefs.NOTIFY, true)
+                _geo.update { it.copy(
+                    enabled = prefs.getBoolean(Prefs.GEO_ENABLED, false),
+                    geoipUrl = prefs.getString(Prefs.GEO_GEOIP_URL, GeoUpdater.DEFAULT_GEOIP_URL) ?: GeoUpdater.DEFAULT_GEOIP_URL,
+                    geositeUrl = prefs.getString(Prefs.GEO_GEOSITE_URL, GeoUpdater.DEFAULT_GEOSITE_URL) ?: GeoUpdater.DEFAULT_GEOSITE_URL,
+                ) }
             }
+        }
+
         prefs.edit { putBoolean(Prefs.DEFAULTS_SEEDED, true) }
     }
 

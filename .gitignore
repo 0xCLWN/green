@@ -13,7 +13,7 @@
 /build
 
 # ---- Secrets ----
-default_keys.txt
+app/src/main/assets/default_config.json
 *.jks
 *.p12
 

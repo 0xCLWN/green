@@ -15,6 +15,15 @@ object Prefs {
     const val GEO_GEOSITE_URL = "geo_geosite_url"
 }
 
+private val countryCodeRegex = Regex("_([a-zA-Z]{2})$")
+
+fun nameWithFlag(name: String): String {
+    val code = countryCodeRegex.find(name)?.groupValues?.get(1)?.uppercase() ?: return name
+    val flag = code.map { String(Character.toChars(0x1F1E6 + (it - 'A'))) }.joinToString("")
+    val base = name.dropLast(3).trimEnd()
+    return "$flag ${base.ifBlank { code }}"
+}
+
 fun patchXrayConfig(json: String, port: Int, user: String, pass: String): String {
     val obj = JSONObject(json)
     val inbounds = obj.optJSONArray("inbounds") ?: return json

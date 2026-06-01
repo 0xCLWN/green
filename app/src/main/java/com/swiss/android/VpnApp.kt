@@ -588,7 +588,7 @@ fun ServerCard(config: Config, subscriptionName: String?, selected: Boolean, onS
             )
         }
         Column(Modifier.weight(1f)) {
-            Text(config.name, fontSize = 15.5.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(nameWithFlag(config.name), fontSize = 15.5.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
             val meta = buildString {
                 append(config.vlessLink?.substringAfter("@")?.substringBefore("?") ?: "json config")
                 if (subscriptionName != null) append(" · $subscriptionName")
@@ -769,7 +769,7 @@ fun ConnectedLayer(
             }
 
             Spacer(Modifier.height(16.dp))
-            Text(config?.name ?: "—", fontSize = 30.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.6).sp, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(config?.name?.let { nameWithFlag(it) } ?: "—", fontSize = 30.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.6).sp, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
             val meta = config?.vlessLink?.substringAfter("@")?.substringBefore("?") ?: ""
             Text(if (meta.isNotEmpty()) "$meta · vless" else "vless", fontSize = 13.sp, color = Color(0xFFAEE6C2), fontFamily = FontFamily.Monospace)
             Spacer(Modifier.height(12.dp))

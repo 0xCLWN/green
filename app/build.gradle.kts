@@ -25,14 +25,6 @@ android {
             abiFilters += "arm64-v8a"
         }
 
-        val defaultKeys = rootProject.file("default_keys.txt")
-            .takeIf { it.exists() }
-            ?.readLines()
-            ?.map { it.trim() }
-            ?.filter { it.isNotBlank() && !it.startsWith("#") }
-            ?.joinToString("|")
-            ?: ""
-        buildConfigField("String", "DEFAULT_VLESS_KEYS", "\"$defaultKeys\"")
     }
 
     buildTypes {
