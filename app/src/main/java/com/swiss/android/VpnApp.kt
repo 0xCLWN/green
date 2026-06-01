@@ -139,6 +139,7 @@ import kotlinx.coroutines.withContext
 sealed class NavScreen {
     object Home : NavScreen()
     object Settings : NavScreen()
+    object GeoSettings : NavScreen()
     data class Edit(val config: Config) : NavScreen()
     object Import : NavScreen()
 }
@@ -157,11 +158,11 @@ fun VpnApp(viewModel: VpnViewModel) {
     val configs by viewModel.configs.collectAsState()
     val selectedId by viewModel.selectedId.collectAsState()
     val allowedApps by viewModel.allowedApps.collectAsState()
-    val geoUpdating by viewModel.geoUpdating.collectAsState()
     val addError by viewModel.addError.collectAsState()
     val connectTimeMs by viewModel.connectTimeMs.collectAsState()
     val autoConnect by viewModel.autoConnect.collectAsState()
     val notify by viewModel.notify.collectAsState()
+    val geo by viewModel.geo.collectAsState()
 
     var screen by remember { mutableStateOf<NavScreen>(NavScreen.Home) }
     var showAppPicker by remember { mutableStateOf(false) }
@@ -210,7 +211,10 @@ fun VpnApp(viewModel: VpnViewModel) {
 
     // Intercept back when pushed screen is open
     BackHandler(enabled = screen != NavScreen.Home) {
-        screen = NavScreen.Home
+        screen = when (screen) {
+            NavScreen.GeoSettings, NavScreen.Import -> NavScreen.Settings
+            else -> NavScreen.Home
+        }
         viewModel.clearAddError()
     }
     // Intercept back when connected layer is up (lower priority — fires only when no pushed screen)
@@ -234,7 +238,7 @@ fun VpnApp(viewModel: VpnViewModel) {
             configs = configs,
             selectedId = selectedId,
             allowedApps = allowedApps,
-            geoUpdating = geoUpdating,
+            geoUpdating = geo.updating,
             status = status,
             onSelect = { viewModel.select(it) },
             onConnect = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); viewModel.connect(context, permissionLauncher) },
@@ -258,15 +262,36 @@ fun VpnApp(viewModel: VpnViewModel) {
             onShakeDone = { shake = false },
         )
 
-        PushedScreen(visible = screen == NavScreen.Settings) {
-            SettingsScreen(
-                autoConnect = autoConnect, onAutoConnect = { viewModel.setAutoConnect(it) },
-                notify = notify, onNotify = { viewModel.setNotify(it) },
-                allowedApps = allowedApps,
-                onSplit = { showAppPicker = true },
-                onImport = { screen = NavScreen.Import },
-                onBack = { screen = NavScreen.Home },
-            )
+        PushedScreen(visible = screen == NavScreen.Settings || screen == NavScreen.GeoSettings || screen == NavScreen.Import) {
+            when (screen) {
+                NavScreen.GeoSettings -> GeoSettingsScreen(
+                    geoEnabled = geo.enabled, onGeoEnabled = { viewModel.setGeoEnabled(it) },
+                    geoipUrl = geo.geoipUrl, onGeoipUrl = { viewModel.setGeoipUrl(it) },
+                    geositeUrl = geo.geositeUrl, onGeositeUrl = { viewModel.setGeositeUrl(it) },
+                    geoUpdating = geo.updating,
+                    geoFilesVersion = geo.filesVersion,
+                    onUpdateNow = { viewModel.updateGeoNow() },
+                    onImport = { uri, name -> viewModel.importGeoFile(context, uri, name) },
+                    onBack = { screen = NavScreen.Settings },
+                )
+                NavScreen.Import -> ImportScreen(
+                    addError = addError,
+                    onAdd = { viewModel.addConfig(it) },
+                    onBack = { screen = NavScreen.Settings; viewModel.clearAddError() },
+                    onClearError = { viewModel.clearAddError() },
+                    onToast = ::showToast,
+                )
+                else -> SettingsScreen(
+                    autoConnect = autoConnect, onAutoConnect = { viewModel.setAutoConnect(it) },
+                    notify = notify, onNotify = { viewModel.setNotify(it) },
+                    allowedApps = allowedApps,
+                    geoEnabled = geo.enabled,
+                    onSplit = { showAppPicker = true },
+                    onImport = { screen = NavScreen.Import },
+                    onGeoSettings = { screen = NavScreen.GeoSettings },
+                    onBack = { screen = NavScreen.Home },
+                )
+            }
         }
 
         PushedScreen(visible = screen is NavScreen.Edit) {
@@ -279,16 +304,6 @@ fun VpnApp(viewModel: VpnViewModel) {
                     onBack = { screen = NavScreen.Home },
                 )
             }
-        }
-
-        PushedScreen(visible = screen == NavScreen.Import) {
-            ImportScreen(
-                addError = addError,
-                onAdd = { viewModel.addConfig(it) },
-                onBack = { screen = NavScreen.Home; viewModel.clearAddError() },
-                onClearError = { viewModel.clearAddError() },
-                onToast = ::showToast,
-            )
         }
 
         if (showAppPicker) {
@@ -775,8 +790,10 @@ fun SettingsScreen(
     autoConnect: Boolean, onAutoConnect: (Boolean) -> Unit,
     notify: Boolean, onNotify: (Boolean) -> Unit,
     allowedApps: Set<String>,
+    geoEnabled: Boolean,
     onSplit: () -> Unit,
     onImport: () -> Unit,
+    onGeoSettings: () -> Unit,
     onBack: () -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
@@ -786,7 +803,7 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(22.dp),
         ) {
             SettingsSection("Connection") {
-                SettingRow("Auto-connect on launch", "Connect the last server at startup") {
+                SettingRow("Auto-connect", "Connect on device boot and app launch") {
                     SmolToggle(autoConnect, onAutoConnect)
                 }
             }
@@ -796,6 +813,17 @@ fun SettingsScreen(
                         Text(
                             if (allowedApps.isEmpty()) "All apps" else "${allowedApps.size} apps",
                             fontSize = 13.sp, color = Accent, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold,
+                        )
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = Dim, modifier = Modifier.size(16.dp))
+                    }
+                }
+                HorizontalDivider(color = Border)
+                SettingRow("Geo filtering", "Geoip and geosite rules for routes", onClick = onGeoSettings) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            if (geoEnabled) "On" else "Off",
+                            fontSize = 13.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold,
+                            color = if (geoEnabled) Accent else Dim,
                         )
                         Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = Dim, modifier = Modifier.size(16.dp))
                     }
@@ -814,6 +842,158 @@ fun SettingsScreen(
                 }
             }
         }
+    }
+}
+
+// ── Geo settings screen ───────────────────────────────────────────────────────
+
+private fun geoFileStatus(filesDir: java.io.File, name: String): Pair<Boolean, String> {
+    val f = java.io.File(filesDir, name)
+    if (!f.exists()) return false to "Not downloaded"
+    val ageDays = (System.currentTimeMillis() - f.lastModified()) / (24 * 60 * 60 * 1000)
+    val age = when {
+        ageDays < 1L -> "Updated today"
+        ageDays == 1L -> "Updated yesterday"
+        ageDays < 7L -> "Updated ${ageDays}d ago"
+        ageDays < 30L -> "Updated ${ageDays / 7}w ago"
+        else -> "Updated ${ageDays / 30}mo ago"
+    }
+    return true to age
+}
+
+@Composable
+fun GeoSettingsScreen(
+    geoEnabled: Boolean,
+    onGeoEnabled: (Boolean) -> Unit,
+    geoipUrl: String,
+    onGeoipUrl: (String) -> Unit,
+    geositeUrl: String,
+    onGeositeUrl: (String) -> Unit,
+    geoUpdating: Boolean,
+    geoFilesVersion: Int,
+    onUpdateNow: () -> Unit,
+    onImport: (android.net.Uri, String) -> Unit,
+    onBack: () -> Unit,
+) {
+    val context = LocalContext.current
+    val filesDir = context.filesDir
+
+    val geoipStatus by produceState(false to "…", geoFilesVersion) {
+        value = withContext(Dispatchers.IO) { geoFileStatus(filesDir, "geoip.dat") }
+    }
+    val (geoipExists, geoipAge) = geoipStatus
+    val geositeStatus by produceState(false to "…", geoFilesVersion) {
+        value = withContext(Dispatchers.IO) { geoFileStatus(filesDir, "geosite.dat") }
+    }
+    val (geositeExists, geositeAge) = geositeStatus
+
+    val geoipLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { onImport(it, "geoip.dat") }
+    }
+    val geositeLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { onImport(it, "geosite.dat") }
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        PushHeader("Geo data", onBack)
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(22.dp),
+        ) {
+            SettingsSection("Filtering") {
+                SettingRow("Enable geo filtering", "Use geoip/geosite rules to route traffic") {
+                    SmolToggle(geoEnabled, onGeoEnabled)
+                }
+            }
+
+            if (geoEnabled) {
+                SettingsSection("Files") {
+                    GeoFileRow(
+                        name = "geoip.dat", status = geoipAge, exists = geoipExists,
+                        onImport = { geoipLauncher.launch(arrayOf("*/*")) },
+                    )
+                    HorizontalDivider(color = Border)
+                    GeoFileRow(
+                        name = "geosite.dat", status = geositeAge, exists = geositeExists,
+                        onImport = { geositeLauncher.launch(arrayOf("*/*")) },
+                    )
+                }
+
+                SettingsSection("Source") {
+                    Column(
+                        Modifier.fillMaxWidth().background(Surface).padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                    ) {
+                        GeoUrlField("geoip.dat URL", geoipUrl, onGeoipUrl)
+                        GeoUrlField("geosite.dat URL", geositeUrl, onGeositeUrl)
+                        TextButton(
+                            onClick = {
+                                onGeoipUrl(GeoUpdater.DEFAULT_GEOIP_URL)
+                                onGeositeUrl(GeoUpdater.DEFAULT_GEOSITE_URL)
+                            },
+                            contentPadding = PaddingValues(0.dp),
+                        ) {
+                            Text("Reset to defaults", color = Dim, fontSize = 13.sp)
+                        }
+                    }
+                }
+
+                Button(
+                    onClick = onUpdateNow,
+                    enabled = !geoUpdating,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(22.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Accent, contentColor = OnAccent,
+                        disabledContainerColor = Accent.copy(alpha = 0.35f), disabledContentColor = OnAccent.copy(alpha = 0.5f),
+                    ),
+                    contentPadding = PaddingValues(vertical = 17.dp),
+                    elevation = ButtonDefaults.buttonElevation(0.dp),
+                ) {
+                    if (geoUpdating) {
+                        CircularProgressIndicator(Modifier.size(18.dp), color = OnAccent, strokeWidth = 2.dp)
+                    } else {
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward, null, modifier = Modifier.size(18.dp))
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        if (geoUpdating) "Updating…" else "Update now",
+                        fontSize = 16.sp, fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun GeoFileRow(name: String, status: String, exists: Boolean, onImport: () -> Unit) {
+    SettingRow(
+        title = name,
+        sub = status,
+        onClick = onImport,
+    ) {
+        Text(
+            "Import",
+            fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+            color = if (exists) Dim else Accent,
+        )
+    }
+}
+
+@Composable
+fun GeoUrlField(label: String, value: String, onChange: (String) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        SectionLabel(label)
+        OutlinedTextField(
+            value = value,
+            onValueChange = onChange,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace, fontSize = 11.5.sp),
+            colors = inputColors(),
+            singleLine = true,
+        )
     }
 }
 

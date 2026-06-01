@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.net.Uri
 import android.net.VpnService
 import androidx.activity.result.ActivityResultLauncher
 import androidx.core.content.edit
@@ -18,11 +19,12 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import libswiss.Libswiss
-import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.net.ServerSocket
 import java.util.UUID
 
@@ -32,18 +34,26 @@ object VpnState {
     val status = MutableStateFlow(VpnStatus.DISCONNECTED)
 }
 
+data class GeoState(
+    val enabled: Boolean,
+    val geoipUrl: String,
+    val geositeUrl: String,
+    val updating: Boolean = false,
+    val filesVersion: Int = 0,
+)
+
 class VpnViewModel(app: Application) : AndroidViewModel(app) {
     private val dao = AppDatabase.get(app).configDao()
     private val prefs: SharedPreferences =
-        app.getSharedPreferences("swiss", Context.MODE_PRIVATE)
+        app.getSharedPreferences(Prefs.NAME, Context.MODE_PRIVATE)
 
-    private val _autoConnect = MutableStateFlow(prefs.getBoolean("auto_connect", false))
+    private val _autoConnect = MutableStateFlow(prefs.getBoolean(Prefs.AUTO_CONNECT, false))
     val autoConnect: StateFlow<Boolean> = _autoConnect.asStateFlow()
-    fun setAutoConnect(v: Boolean) { _autoConnect.value = v; prefs.edit { putBoolean("auto_connect", v) } }
+    fun setAutoConnect(v: Boolean) { _autoConnect.value = v; prefs.edit { putBoolean(Prefs.AUTO_CONNECT, v) } }
 
-    private val _notify = MutableStateFlow(prefs.getBoolean("notify", true))
+    private val _notify = MutableStateFlow(prefs.getBoolean(Prefs.NOTIFY, true))
     val notify: StateFlow<Boolean> = _notify.asStateFlow()
-    fun setNotify(v: Boolean) { _notify.value = v; prefs.edit { putBoolean("notify", v) } }
+    fun setNotify(v: Boolean) { _notify.value = v; prefs.edit { putBoolean(Prefs.NOTIFY, v) } }
 
     private val _connectTimeMs = MutableStateFlow<Long?>(null)
     val connectTimeMs: StateFlow<Long?> = _connectTimeMs.asStateFlow()
@@ -61,7 +71,7 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val _selectedId = MutableStateFlow<Int?>(
-        prefs.getInt("last_selected_id", -1).takeIf { it != -1 }
+        prefs.getInt(Prefs.LAST_SELECTED, -1).takeIf { it != -1 }
     )
     val selectedId: StateFlow<Int?> = _selectedId.asStateFlow()
 
@@ -71,20 +81,54 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
     val status: StateFlow<VpnStatus> = VpnState.status.asStateFlow()
 
     private val _allowedApps = MutableStateFlow<Set<String>>(
-        prefs.getStringSet("allowed_apps", emptySet()) ?: emptySet()
+        prefs.getStringSet(Prefs.ALLOWED_APPS, emptySet()) ?: emptySet()
     )
     val allowedApps: StateFlow<Set<String>> = _allowedApps.asStateFlow()
 
     fun setAllowedApps(apps: Set<String>) {
         _allowedApps.value = apps
-        prefs.edit { putStringSet("allowed_apps", apps) }
+        prefs.edit { putStringSet(Prefs.ALLOWED_APPS, apps) }
     }
 
-    // GEO UPDATE — remove these three lines and skipGeoUpdate() to disable
-    private val _geoUpdating = MutableStateFlow(false)
-    val geoUpdating: StateFlow<Boolean> = _geoUpdating.asStateFlow()
+    private val _geo = MutableStateFlow(
+        GeoState(
+            enabled = prefs.getBoolean(Prefs.GEO_ENABLED, false),
+            geoipUrl = prefs.getString(Prefs.GEO_GEOIP_URL, GeoUpdater.DEFAULT_GEOIP_URL) ?: GeoUpdater.DEFAULT_GEOIP_URL,
+            geositeUrl = prefs.getString(Prefs.GEO_GEOSITE_URL, GeoUpdater.DEFAULT_GEOSITE_URL) ?: GeoUpdater.DEFAULT_GEOSITE_URL,
+        )
+    )
+    val geo: StateFlow<GeoState> = _geo.asStateFlow()
+
+    fun setGeoEnabled(v: Boolean) { _geo.update { it.copy(enabled = v) }; prefs.edit { putBoolean(Prefs.GEO_ENABLED, v) } }
+    fun setGeoipUrl(v: String) { _geo.update { it.copy(geoipUrl = v) }; prefs.edit { putString(Prefs.GEO_GEOIP_URL, v) } }
+    fun setGeositeUrl(v: String) { _geo.update { it.copy(geositeUrl = v) }; prefs.edit { putString(Prefs.GEO_GEOSITE_URL, v) } }
+
     private var geoUpdateJob: Job? = null
-    // END GEO UPDATE
+
+    fun skipGeoUpdate() { geoUpdateJob?.cancel() }
+
+    fun updateGeoNow() {
+        geoUpdateJob?.cancel()
+        geoUpdateJob = viewModelScope.launch {
+            _geo.update { it.copy(updating = true) }
+            val filesDir = getApplication<Application>().filesDir
+            runCatching { GeoUpdater.download(filesDir, _geo.value.geoipUrl, _geo.value.geositeUrl) }
+            _geo.update { it.copy(updating = false, filesVersion = it.filesVersion + 1) }
+        }
+    }
+
+    fun importGeoFile(context: Context, uri: Uri, name: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    File(getApplication<Application>().filesDir, name).outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+            }
+            _geo.update { it.copy(filesVersion = it.filesVersion + 1) }
+        }
+    }
 
     private var connectJob: Job? = null
     private var pendingConfigJson: String? = null
@@ -94,7 +138,7 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
     private var pendingSocksPass: String = ""
 
     private suspend fun seedDefaultConfigs() {
-        if (prefs.getBoolean("defaults_seeded", false)) return
+        if (prefs.getBoolean(Prefs.DEFAULTS_SEEDED, false)) return
         BuildConfig.DEFAULT_VLESS_KEYS
             .split("|")
             .filter { it.isNotBlank() }
@@ -106,12 +150,12 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
                     dao.insert(Config(name = name, vlessLink = link))
                 }
             }
-        prefs.edit { putBoolean("defaults_seeded", true) }
+        prefs.edit { putBoolean(Prefs.DEFAULTS_SEEDED, true) }
     }
 
     fun select(config: Config) {
         _selectedId.value = config.id
-        prefs.edit { putInt("last_selected_id", config.id) }
+        prefs.edit { putInt(Prefs.LAST_SELECTED, config.id) }
     }
 
     fun addConfig(input: String) {
@@ -135,41 +179,6 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun patchXrayConfig(json: String, port: Int, user: String, pass: String): String {
-        val obj = JSONObject(json)
-        val inbounds = obj.optJSONArray("inbounds") ?: return json
-        for (i in 0 until inbounds.length()) {
-            val inbound = inbounds.getJSONObject(i)
-            if (inbound.optString("protocol") == "socks") {
-                inbound.put("port", port)
-                val settings = inbound.optJSONObject("settings") ?: JSONObject()
-                settings.put("auth", "password")
-                settings.put("accounts", JSONArray().put(JSONObject().put("user", user).put("pass", pass)))
-                inbound.put("settings", settings)
-            }
-        }
-        return obj.toString()
-    }
-
-    private fun dnsServerFromJson(json: String): String {
-        return try {
-            val servers = JSONObject(json).optJSONObject("dns")?.optJSONArray("servers")
-            if (servers != null) {
-                for (i in 0 until servers.length()) {
-                    val addr = when (val s = servers.get(i)) {
-                        is JSONObject -> s.optString("address", "")
-                        is String -> s
-                        else -> ""
-                    }
-                    if (addr.isNotBlank() && addr != "localhost" && !addr.startsWith("127.")) return addr
-                }
-            }
-            "1.1.1.1"
-        } catch (_: Exception) {
-            "1.1.1.1"
-        }
-    }
-
     private fun nameFromJsonConfig(json: String): String {
         return try {
             val obj = JSONObject(json)
@@ -188,10 +197,6 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    // GEO UPDATE — remove this function to disable
-    fun skipGeoUpdate() { geoUpdateJob?.cancel() }
-    // END GEO UPDATE
-
     fun clearAddError() {
         _addError.value = null
     }
@@ -209,15 +214,14 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
         connectJob?.cancel()
         val config = configs.value.find { it.id == _selectedId.value } ?: return
         connectJob = viewModelScope.launch {
-            // GEO UPDATE — remove this block to disable
+            val geo = _geo.value
             val filesDir = getApplication<Application>().filesDir
-            if (GeoUpdater.ENABLED && GeoUpdater.isStale(filesDir)) {
-                _geoUpdating.value = true
-                geoUpdateJob = launch { runCatching { GeoUpdater.download(filesDir) } }
+            if (geo.enabled && GeoUpdater.isStale(filesDir)) {
+                _geo.update { it.copy(updating = true) }
+                geoUpdateJob = launch { runCatching { GeoUpdater.download(filesDir, geo.geoipUrl, geo.geositeUrl) } }
                 geoUpdateJob?.join()
-                _geoUpdating.value = false
+                _geo.update { it.copy(updating = false) }
             }
-            // END GEO UPDATE
 
             try {
                 // Generate the xray config fresh from the vless key each time —
@@ -298,7 +302,7 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
     fun disconnect(context: Context) {
         connectJob?.cancel()
         connectJob = null
-        _geoUpdating.value = false
+        _geo.update { it.copy(updating = false) }
         context.startService(
             Intent(context, SwissVpnService::class.java).apply {
                 action = SwissVpnService.ACTION_STOP

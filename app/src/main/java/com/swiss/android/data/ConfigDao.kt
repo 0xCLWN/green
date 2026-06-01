@@ -12,6 +12,9 @@ interface ConfigDao {
     @Query("SELECT * FROM configs ORDER BY createdAt DESC")
     fun getAll(): Flow<List<Config>>
 
+    @Query("SELECT * FROM configs WHERE id = :id LIMIT 1")
+    suspend fun getById(id: Int): Config?
+
     @Insert
     suspend fun insert(config: Config): Long
 
