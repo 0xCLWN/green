@@ -103,6 +103,7 @@ fun MainScreen(viewModel: VpnViewModel) {
     val addError by viewModel.addError.collectAsState()
 
     val allowedApps by viewModel.allowedApps.collectAsState()
+    val geoUpdating by viewModel.geoUpdating.collectAsState() // GEO UPDATE — remove with GeoUpdater
     var showAddDialog by remember { mutableStateOf(false) }
     var showAppPicker by remember { mutableStateOf(false) }
 
@@ -147,10 +148,17 @@ fun MainScreen(viewModel: VpnViewModel) {
                     if (status == VpnStatus.CONNECTED) viewModel.disconnect(context)
                     else viewModel.connect(context, permissionLauncher)
                 },
-                enabled = status != VpnStatus.CONNECTING && (status == VpnStatus.CONNECTED || selectedId != null),
+                enabled = !geoUpdating && status != VpnStatus.CONNECTING && (status == VpnStatus.CONNECTED || selectedId != null),
             ) {
                 Text(if (status == VpnStatus.CONNECTED) "Disconnect" else "Connect")
             }
+
+            // GEO UPDATE — remove this block with GeoUpdater
+            if (geoUpdating) {
+                Spacer(Modifier.height(12.dp))
+                GeoUpdateBanner(onSkip = { viewModel.skipGeoUpdate() })
+            }
+            // END GEO UPDATE
 
             if (status == VpnStatus.DISCONNECTED) {
                 Spacer(Modifier.height(12.dp))
@@ -269,6 +277,30 @@ fun ConfigCard(
         }
     }
 }
+
+// GEO UPDATE — remove this composable with GeoUpdater
+@Composable
+fun GeoUpdateBanner(onSkip: () -> Unit) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+            Text(
+                "Updating geo databases…",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = onSkip) { Text("Skip") }
+        }
+    }
+}
+// END GEO UPDATE
 
 @Composable
 fun AppPickerDialog(

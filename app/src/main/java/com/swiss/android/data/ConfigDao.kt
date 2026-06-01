@@ -1,0 +1,19 @@
+package com.swiss.android.data
+
+import androidx.room.Dao
+import androidx.room.Delete
+import androidx.room.Insert
+import androidx.room.Query
+import kotlinx.coroutines.flow.Flow
+
+@Dao
+interface ConfigDao {
+    @Query("SELECT * FROM configs ORDER BY createdAt DESC")
+    fun getAll(): Flow<List<Config>>
+
+    @Insert
+    suspend fun insert(config: Config): Long
+
+    @Delete
+    suspend fun delete(config: Config)
+}

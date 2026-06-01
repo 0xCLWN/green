@@ -12,6 +12,7 @@ import androidx.lifecycle.viewModelScope
 import com.swiss.android.data.AppDatabase
 import com.swiss.android.data.Config
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -64,6 +65,12 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
         _allowedApps.value = apps
         prefs.edit { putStringSet("allowed_apps", apps) }
     }
+
+    // GEO UPDATE — remove these three lines and skipGeoUpdate() to disable
+    private val _geoUpdating = MutableStateFlow(false)
+    val geoUpdating: StateFlow<Boolean> = _geoUpdating.asStateFlow()
+    private var geoUpdateJob: Job? = null
+    // END GEO UPDATE
 
     private var pendingConfigJson: String? = null
     private var pendingDnsServer: String = "1.1.1.1"
@@ -166,6 +173,10 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // GEO UPDATE — remove this function to disable
+    fun skipGeoUpdate() { geoUpdateJob?.cancel() }
+    // END GEO UPDATE
+
     fun clearAddError() {
         _addError.value = null
     }
@@ -178,6 +189,16 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
     fun connect(context: Context, launcher: ActivityResultLauncher<Intent>) {
         val config = configs.value.find { it.id == _selectedId.value } ?: return
         viewModelScope.launch {
+            // GEO UPDATE — remove this block to disable
+            val filesDir = getApplication<Application>().filesDir
+            if (GeoUpdater.ENABLED && GeoUpdater.isStale(filesDir)) {
+                _geoUpdating.value = true
+                geoUpdateJob = launch { runCatching { GeoUpdater.download(filesDir) } }
+                geoUpdateJob?.join()
+                _geoUpdating.value = false
+            }
+            // END GEO UPDATE
+
             try {
                 // Generate the xray config fresh from the vless key each time —
                 // this picks up any config schema improvements from app updates,

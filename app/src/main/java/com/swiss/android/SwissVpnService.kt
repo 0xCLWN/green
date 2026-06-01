@@ -77,6 +77,7 @@ class SwissVpnService : VpnService() {
                 .establish()
                 ?: return stopVpn()
 
+            Libswiss.setAssetPath(filesDir.absolutePath) // GEO UPDATE — remove with GeoUpdater
             Libswiss.start(configJson)
 
             TProxyService.TProxyStartService(writeTunConfig(socksPort, socksUser, socksPass), vpnInterface!!.fd)

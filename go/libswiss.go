@@ -5,6 +5,7 @@ package libswiss
 import (
 	"encoding/json"
 	stdnet "net"
+	"os"
 	"strings"
 	"syscall"
 
@@ -23,6 +24,12 @@ type Protector interface {
 }
 
 var instance *core.Instance
+
+// SetAssetPath tells xray where to find geoip.dat and geosite.dat.
+// Call before Start whenever geo routing rules are present in the config.
+func SetAssetPath(path string) {
+	os.Setenv("XRAY_LOCATION_ASSET", path)
+}
 
 // SetProtector registers the Android socket protector. Call before Start.
 func SetProtector(p Protector) error {
