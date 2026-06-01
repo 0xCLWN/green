@@ -54,7 +54,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.automirrored.filled.CallSplit
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -606,7 +608,7 @@ fun ConnectedLayer(
     LaunchedEffect(connectTimeMs) {
         if (connectTimeMs == null) { uptimeSecs = 0; return@LaunchedEffect }
         while (true) {
-            uptimeSecs = ((System.currentTimeMillis() - connectTimeMs) / 1000).toInt()
+            uptimeSecs = ((System.currentTimeMillis() - connectTimeMs) / 1000).toInt().coerceAtLeast(0)
             delay(1000)
         }
     }
@@ -617,14 +619,15 @@ fun ConnectedLayer(
     val testOk = testState?.startsWith("ok:") == true
     val testFailed = testState == "failed"
     val testMs = testState?.removePrefix("ok:")?.toLongOrNull()
+    val testMsLabel = if (testMs == 0L) "<1" else testMs?.toString()
     LaunchedEffect(visible) { if (!visible) testState = null }
     LaunchedEffect(testState) {
         if (testState != "testing") return@LaunchedEffect
         testState = withContext(Dispatchers.IO) {
             runCatching {
-                val t0 = System.currentTimeMillis()
+                val t0 = System.nanoTime()
                 java.net.Socket().use { it.connect(java.net.InetSocketAddress("1.1.1.1", 443), 5_000) }
-                "ok:${System.currentTimeMillis() - t0}"
+                "ok:${(System.nanoTime() - t0) / 1_000_000L}"
             }.getOrElse { "failed" }
         }
     }
@@ -701,33 +704,36 @@ fun ConnectedLayer(
                     .padding(13.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
+                val testColor = when { testOk -> Glow; testFailed -> Danger; else -> Color.White }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                     when {
-                        testState == "testing" -> "⟳  testing route…"
-                        testOk -> "⚡  route healthy · $testMs ms"
-                        testFailed -> "✕  route unreachable · tap to retry"
-                        else -> "⚡  Test connection"
-                    },
-                    fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-                    color = when {
-                        testOk -> Glow
-                        testFailed -> Danger
-                        else -> Color.White
-                    },
-                )
+                        testState == "testing" -> CircularProgressIndicator(Modifier.size(15.dp), color = Color.White, strokeWidth = 2.dp)
+                        testFailed -> Icon(Icons.Default.Close, null, tint = Danger, modifier = Modifier.size(15.dp))
+                        else -> Icon(Icons.Default.Bolt, null, tint = testColor, modifier = Modifier.size(15.dp))
+                    }
+                    Text(
+                        when {
+                            testState == "testing" -> "testing route…"
+                            testOk -> "route healthy · $testMsLabel ms"
+                            testFailed -> "route unreachable · tap to retry"
+                            else -> "Test connection"
+                        },
+                        fontSize = 16.sp, fontWeight = FontWeight.Bold, color = testColor,
+                    )
+                }
             }
             Spacer(Modifier.height(11.dp))
 
             // Disconnect
-            OutlinedButton(
+            Button(
                 onClick = onDisconnect,
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(22.dp),
-                border = androidx.compose.foundation.BorderStroke(1.5.dp, Color.White.copy(0.5f)),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                contentPadding = PaddingValues(vertical = 16.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
+                contentPadding = PaddingValues(vertical = 17.dp),
+                elevation = ButtonDefaults.buttonElevation(0.dp),
             ) {
-                Text("Disconnect", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text("Disconnect", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.1.sp)
             }
         }
     }
