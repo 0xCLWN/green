@@ -53,9 +53,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.CallSplit
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bolt
-import androidx.compose.material.icons.automirrored.filled.CallSplit
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Delete
@@ -123,12 +123,11 @@ import com.swiss.android.ui.theme.Border2
 import com.swiss.android.ui.theme.Danger
 import com.swiss.android.ui.theme.Dim
 import com.swiss.android.ui.theme.Dim2
+import com.swiss.android.ui.theme.Glow
 import com.swiss.android.ui.theme.GradA
 import com.swiss.android.ui.theme.GradB
-import com.swiss.android.ui.theme.Glow
 import com.swiss.android.ui.theme.OnAccent
 import com.swiss.android.ui.theme.Surface
-import com.swiss.android.ui.theme.Surface2
 import com.swiss.android.ui.theme.Surface3
 import com.swiss.android.ui.theme.TextPrimary
 import com.swiss.android.ui.theme.Warn
@@ -142,6 +141,7 @@ sealed class NavScreen {
     object Home : NavScreen()
     object Settings : NavScreen()
     object GeoSettings : NavScreen()
+    object Subscriptions : NavScreen()
     data class Edit(val config: Config) : NavScreen()
     object Import : NavScreen()
 }
@@ -161,10 +161,12 @@ fun VpnApp(viewModel: VpnViewModel) {
     val selectedId by viewModel.selectedId.collectAsState()
     val allowedApps by viewModel.allowedApps.collectAsState()
     val addError by viewModel.addError.collectAsState()
+    val subscriptionImporting by viewModel.subscriptionImporting.collectAsState()
     val connectTimeMs by viewModel.connectTimeMs.collectAsState()
     val autoConnect by viewModel.autoConnect.collectAsState()
     val notify by viewModel.notify.collectAsState()
     val geo by viewModel.geo.collectAsState()
+    val subscriptions by viewModel.subscriptions.collectAsState()
 
     var screen by remember { mutableStateOf<NavScreen>(NavScreen.Home) }
     var showAppPicker by remember { mutableStateOf(false) }
@@ -214,7 +216,7 @@ fun VpnApp(viewModel: VpnViewModel) {
     // Intercept back when pushed screen is open
     BackHandler(enabled = screen != NavScreen.Home) {
         screen = when (screen) {
-            NavScreen.GeoSettings, NavScreen.Import -> NavScreen.Settings
+            NavScreen.GeoSettings, NavScreen.Import, NavScreen.Subscriptions -> NavScreen.Settings
             else -> NavScreen.Home
         }
         viewModel.clearAddError()
@@ -238,6 +240,7 @@ fun VpnApp(viewModel: VpnViewModel) {
     ) {
         HomeContent(
             configs = configs,
+            subscriptions = subscriptions,
             selectedId = selectedId,
             allowedApps = allowedApps,
             geoUpdating = geo.updating,
@@ -264,7 +267,7 @@ fun VpnApp(viewModel: VpnViewModel) {
             onShakeDone = { shake = false },
         )
 
-        PushedScreen(visible = screen == NavScreen.Settings || screen == NavScreen.GeoSettings || screen == NavScreen.Import) {
+        PushedScreen(visible = screen == NavScreen.Settings || screen == NavScreen.GeoSettings || screen == NavScreen.Import || screen == NavScreen.Subscriptions) {
             when (screen) {
                 NavScreen.GeoSettings -> GeoSettingsScreen(
                     geoEnabled = geo.enabled, onGeoEnabled = { viewModel.setGeoEnabled(it) },
@@ -278,19 +281,32 @@ fun VpnApp(viewModel: VpnViewModel) {
                 )
                 NavScreen.Import -> ImportScreen(
                     addError = addError,
+                    subscriptionImporting = subscriptionImporting,
                     onAdd = { viewModel.addConfig(it) },
+                    onSubscription = { viewModel.addSubscription(it) },
                     onBack = { screen = NavScreen.Settings; viewModel.clearAddError() },
                     onClearError = { viewModel.clearAddError() },
                     onToast = ::showToast,
+                )
+                NavScreen.Subscriptions -> SubscriptionsScreen(
+                    subscriptions = subscriptions,
+                    addError = addError,
+                    subscriptionImporting = subscriptionImporting,
+                    onAdd = { viewModel.addSubscription(it) },
+                    onDelete = { viewModel.deleteSubscription(it) },
+                    onClearError = { viewModel.clearAddError() },
+                    onBack = { screen = NavScreen.Settings; viewModel.clearAddError() },
                 )
                 else -> SettingsScreen(
                     autoConnect = autoConnect, onAutoConnect = { viewModel.setAutoConnect(it) },
                     notify = notify, onNotify = { viewModel.setNotify(it) },
                     allowedApps = allowedApps,
                     geoEnabled = geo.enabled,
+                    subscriptionCount = subscriptions.size,
                     onSplit = { showAppPicker = true },
                     onImport = { screen = NavScreen.Import },
                     onGeoSettings = { screen = NavScreen.GeoSettings },
+                    onSubscriptions = { screen = NavScreen.Subscriptions },
                     onBack = { screen = NavScreen.Home },
                 )
             }
@@ -329,7 +345,11 @@ fun PushedScreen(visible: Boolean, content: @Composable () -> Unit) {
         enter = slideInHorizontally(tween(350, easing = FastOutSlowInEasing)) { it },
         exit = slideOutHorizontally(tween(300, easing = FastOutSlowInEasing)) { it },
     ) {
-        Box(Modifier.fillMaxSize().background(Color(0xFF0F1512))) { content() }
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color(0xFF0F1512))
+        ) { content() }
     }
 }
 
@@ -338,6 +358,7 @@ fun PushedScreen(visible: Boolean, content: @Composable () -> Unit) {
 @Composable
 fun HomeContent(
     configs: List<Config>,
+    subscriptions: List<com.swiss.android.data.Subscription>,
     selectedId: Int?,
     allowedApps: Set<String>,
     geoUpdating: Boolean,
@@ -364,7 +385,10 @@ fun HomeContent(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                 Box(
-                    Modifier.size(26.dp).clip(RoundedCornerShape(8.dp)).background(AccentSoft)
+                    Modifier
+                        .size(26.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(AccentSoft)
                         .border(1.dp, Accent.copy(alpha = 0.35f), RoundedCornerShape(8.dp)),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -389,8 +413,17 @@ fun HomeContent(
                     )
                 }
                 Box(
-                    Modifier.size(96.dp).clip(CircleShape)
-                        .background(Brush.radialGradient(listOf(Color(0xFF1E2925), Color(0xFF161E1B))))
+                    Modifier
+                        .size(96.dp)
+                        .clip(CircleShape)
+                        .background(
+                            Brush.radialGradient(
+                                listOf(
+                                    Color(0xFF1E2925),
+                                    Color(0xFF161E1B)
+                                )
+                            )
+                        )
                         .border(1.dp, Border, CircleShape),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -419,6 +452,7 @@ fun HomeContent(
         Spacer(Modifier.height(20.dp))
         SectionLabel("Servers")
 
+        val subNameMap = remember(subscriptions) { subscriptions.associateBy { it.id } }
         LazyColumn(
             Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(9.dp),
@@ -427,6 +461,7 @@ fun HomeContent(
             items(configs, key = { it.id }) { config ->
                 ServerCard(
                     config = config,
+                    subscriptionName = config.subscriptionId?.let { subNameMap[it]?.name },
                     selected = config.id == selectedId,
                     onSelect = { onSelect(config) },
                     onEdit = { onOpenEdit(config) },
@@ -461,9 +496,12 @@ fun HomeContent(
 @Composable
 fun SmolIconBtn(onClick: () -> Unit, content: @Composable () -> Unit) {
     Box(
-        Modifier.size(42.dp).clip(RoundedCornerShape(13.dp))
+        Modifier
+            .size(42.dp)
+            .clip(RoundedCornerShape(13.dp))
             .border(1.dp, Border, RoundedCornerShape(13.dp))
-            .background(Surface).clickable(onClick = onClick),
+            .background(Surface)
+            .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) { content() }
 }
@@ -486,14 +524,22 @@ fun SplitTunnelLine(allowedApps: Set<String>, readOnly: Boolean, onClick: (() ->
     val boldColor = if (readOnly) Color.White else TextPrimary
 
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
-            .border(1.dp, borderColor, RoundedCornerShape(16.dp)).background(bg)
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .border(1.dp, borderColor, RoundedCornerShape(16.dp))
+            .background(bg)
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(11.dp),
     ) {
-        Box(Modifier.size(30.dp).clip(RoundedCornerShape(9.dp)).background(iconBg), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier
+                .size(30.dp)
+                .clip(RoundedCornerShape(9.dp))
+                .background(iconBg), contentAlignment = Alignment.Center
+        ) {
             Icon(Icons.AutoMirrored.Filled.CallSplit, null, tint = iconTint, modifier = Modifier.size(17.dp))
         }
         val label = buildAnnotatedString {
@@ -514,9 +560,11 @@ fun SplitTunnelLine(allowedApps: Set<String>, readOnly: Boolean, onClick: (() ->
 }
 
 @Composable
-fun ServerCard(config: Config, selected: Boolean, onSelect: () -> Unit, onEdit: () -> Unit) {
+fun ServerCard(config: Config, subscriptionName: String?, selected: Boolean, onSelect: () -> Unit, onEdit: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
             .border(1.dp, if (selected) Accent else Border, RoundedCornerShape(16.dp))
             .background(Surface)
             .then(if (selected) Modifier.background(AccentSoft) else Modifier)
@@ -526,18 +574,32 @@ fun ServerCard(config: Config, selected: Boolean, onSelect: () -> Unit, onEdit: 
         horizontalArrangement = Arrangement.spacedBy(13.dp),
     ) {
         Box(
-            Modifier.size(21.dp).clip(CircleShape).border(2.dp, if (selected) Accent else Border2, CircleShape),
+            Modifier
+                .size(21.dp)
+                .clip(CircleShape)
+                .border(2.dp, if (selected) Accent else Border2, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
-            if (selected) Box(Modifier.size(11.dp).clip(CircleShape).background(Accent))
+            if (selected) Box(
+                Modifier
+                    .size(11.dp)
+                    .clip(CircleShape)
+                    .background(Accent)
+            )
         }
         Column(Modifier.weight(1f)) {
             Text(config.name, fontSize = 15.5.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            val meta = config.vlessLink?.substringAfter("@")?.substringBefore("?") ?: "json config"
+            val meta = buildString {
+                append(config.vlessLink?.substringAfter("@")?.substringBefore("?") ?: "json config")
+                if (subscriptionName != null) append(" · $subscriptionName")
+            }
             Text(meta, fontSize = 12.sp, color = Dim, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
         }
         Box(
-            Modifier.size(30.dp).clip(RoundedCornerShape(9.dp)).clickable(onClick = onEdit),
+            Modifier
+                .size(30.dp)
+                .clip(RoundedCornerShape(9.dp))
+                .clickable(onClick = onEdit),
             contentAlignment = Alignment.Center,
         ) {
             Icon(Icons.Default.MoreVert, "Edit", tint = Dim, modifier = Modifier.size(18.dp))
@@ -548,7 +610,9 @@ fun ServerCard(config: Config, selected: Boolean, onSelect: () -> Unit, onEdit: 
 @Composable
 fun AddServerCard(onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
             .border(1.dp, Border2, RoundedCornerShape(16.dp))
             .clickable(onClick = onClick)
             .padding(13.dp),
@@ -633,27 +697,51 @@ fun ConnectedLayer(
     }
 
     Box(
-        Modifier.fillMaxSize().graphicsLayer {
-            translationY = size.height * slideY
-            translationX = shakeX.dp.toPx()
-            scaleX = scale
-            scaleY = scale
-            transformOrigin = TransformOrigin(0.5f, 1f)
-        }
+        Modifier
+            .fillMaxSize()
+            .graphicsLayer {
+                translationY = size.height * slideY
+                translationX = shakeX.dp.toPx()
+                scaleX = scale
+                scaleY = scale
+                transformOrigin = TransformOrigin(0.5f, 1f)
+            }
     ) {
         // Green gradient background
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(GradA, GradB))))
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Brush.verticalGradient(listOf(GradA, GradB)))
+        )
         // Top radial glow (static base + animated bloom on entry)
-        Box(Modifier.fillMaxWidth().height(220.dp).background(
-            Brush.verticalGradient(listOf(Accent.copy(alpha = 0.22f + bloom * 0.45f), Color.Transparent))
-        ))
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(220.dp)
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Accent.copy(alpha = 0.22f + bloom * 0.45f),
+                            Color.Transparent
+                        )
+                    )
+                )
+        )
 
         Column(
-            Modifier.fillMaxSize().padding(horizontal = 18.dp).padding(top = 16.dp, bottom = 22.dp),
+            Modifier
+                .fillMaxSize()
+                .padding(horizontal = 18.dp)
+                .padding(top = 16.dp, bottom = 22.dp),
         ) {
             // Grab handle
-            Box(Modifier.size(width = 42.dp, height = 5.dp).clip(RoundedCornerShape(5.dp))
-                .background(Color.White.copy(0.35f)).align(Alignment.CenterHorizontally))
+            Box(
+                Modifier
+                    .size(width = 42.dp, height = 5.dp)
+                    .clip(RoundedCornerShape(5.dp))
+                    .background(Color.White.copy(0.35f))
+                    .align(Alignment.CenterHorizontally)
+            )
             Spacer(Modifier.height(14.dp))
 
             // Status row
@@ -666,9 +754,11 @@ fun ConnectedLayer(
                     )
                 }
                 Row(
-                    Modifier.clip(RoundedCornerShape(20.dp))
+                    Modifier
+                        .clip(RoundedCornerShape(20.dp))
                         .border(1.dp, Color.White.copy(0.18f), RoundedCornerShape(20.dp))
-                        .background(Color.Black.copy(0.22f)).clickable(onClick = onLocked)
+                        .background(Color.Black.copy(0.22f))
+                        .clickable(onClick = onLocked)
                         .padding(horizontal = 11.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -693,12 +783,16 @@ fun ConnectedLayer(
 
             // Test connection
             Box(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
-                    .border(1.dp, when {
-                        testOk -> Glow
-                        testFailed -> Danger.copy(alpha = 0.6f)
-                        else -> Color.White.copy(0.2f)
-                    }, RoundedCornerShape(16.dp))
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .border(
+                        1.dp, when {
+                            testOk -> Glow
+                            testFailed -> Danger.copy(alpha = 0.6f)
+                            else -> Color.White.copy(0.2f)
+                        }, RoundedCornerShape(16.dp)
+                    )
                     .background(Color.Black.copy(0.18f))
                     .clickable { if (testState != "testing") testState = "testing" }
                     .padding(13.dp),
@@ -745,15 +839,26 @@ fun PulsingDot() {
     val scale by inf.animateFloat(1f, 2.2f, infiniteRepeatable(tween(1900), RepeatMode.Restart), label = "scale")
     val alpha by inf.animateFloat(0.5f, 0f, infiniteRepeatable(tween(1900), RepeatMode.Restart), label = "alpha")
     Box(contentAlignment = Alignment.Center) {
-        Box(Modifier.size(11.dp).graphicsLayer { scaleX = scale; scaleY = scale; this.alpha = alpha }.clip(CircleShape).background(Glow))
-        Box(Modifier.size(11.dp).clip(CircleShape).background(Glow))
+        Box(
+            Modifier
+                .size(11.dp)
+                .graphicsLayer { scaleX = scale; scaleY = scale; this.alpha = alpha }
+                .clip(CircleShape)
+                .background(Glow))
+        Box(
+            Modifier
+                .size(11.dp)
+                .clip(CircleShape)
+                .background(Glow)
+        )
     }
 }
 
 @Composable
 fun StatBox(label: String, value: String, unit: String, modifier: Modifier = Modifier) {
     Column(
-        modifier.clip(RoundedCornerShape(16.dp))
+        modifier
+            .clip(RoundedCornerShape(16.dp))
             .border(1.dp, Color.White.copy(0.12f), RoundedCornerShape(16.dp))
             .background(Color.Black.copy(0.2f))
             .padding(horizontal = 14.dp, vertical = 13.dp),
@@ -775,7 +880,9 @@ fun StatBox(label: String, value: String, unit: String, modifier: Modifier = Mod
 fun PushHeader(title: String, onBack: () -> Unit, trailing: (@Composable () -> Unit)? = null) {
     Column {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
@@ -797,15 +904,20 @@ fun SettingsScreen(
     notify: Boolean, onNotify: (Boolean) -> Unit,
     allowedApps: Set<String>,
     geoEnabled: Boolean,
+    subscriptionCount: Int,
     onSplit: () -> Unit,
     onImport: () -> Unit,
     onGeoSettings: () -> Unit,
+    onSubscriptions: () -> Unit,
     onBack: () -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
         PushHeader("Settings", onBack)
         Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 16.dp),
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 18.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(22.dp),
         ) {
             SettingsSection("Connection") {
@@ -836,7 +948,17 @@ fun SettingsScreen(
                 }
             }
             SettingsSection("Data") {
-                SettingRow("Import / subscriptions", "QR, clipboard or a subscription link", onClick = onImport) {
+                SettingRow("Subscriptions", "Managed server lists", onClick = onSubscriptions) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (subscriptionCount > 0) Text(
+                            "$subscriptionCount",
+                            fontSize = 13.sp, color = Accent, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold,
+                        )
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = Dim, modifier = Modifier.size(16.dp))
+                    }
+                }
+                HorizontalDivider(color = Border)
+                SettingRow("Add server", "QR, clipboard or manual entry", onClick = onImport) {
                     Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = Dim, modifier = Modifier.size(16.dp))
                 }
             }
@@ -845,6 +967,97 @@ fun SettingsScreen(
                 HorizontalDivider(color = Border)
                 SettingRow("App version") {
                     Text("1.0.0", fontSize = 13.sp, color = Dim, fontFamily = FontFamily.Monospace)
+                }
+            }
+        }
+    }
+}
+
+// ── Subscriptions screen ──────────────────────────────────────────────────────
+
+@Composable
+fun SubscriptionsScreen(
+    subscriptions: List<com.swiss.android.data.Subscription>,
+    addError: String?,
+    subscriptionImporting: Boolean,
+    onAdd: (String) -> Unit,
+    onDelete: (com.swiss.android.data.Subscription) -> Unit,
+    onClearError: () -> Unit,
+    onBack: () -> Unit,
+) {
+    var showAdd by remember { mutableStateOf(false) }
+    var url by remember { mutableStateOf("") }
+
+    Column(Modifier.fillMaxSize()) {
+        PushHeader("Subscriptions", onBack) {
+            SmolIconBtn(onClick = { showAdd = !showAdd; onClearError() }) {
+                Icon(Icons.Default.Add, "Add", tint = TextPrimary, modifier = Modifier.size(20.dp))
+            }
+        }
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(22.dp),
+        ) {
+            AnimatedVisibility(visible = showAdd) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SectionLabel("Subscription URL")
+                    OutlinedTextField(
+                        value = url,
+                        onValueChange = { url = it; onClearError() },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        placeholder = { Text("https://…", color = Dim, fontFamily = FontFamily.Monospace, fontSize = 12.5.sp) },
+                        isError = addError != null,
+                        supportingText = addError?.let { err -> { Text(err, color = Danger) } },
+                        singleLine = true,
+                        textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace, fontSize = 12.5.sp),
+                        colors = inputColors(),
+                    )
+                    Button(
+                        onClick = { onAdd(url.trim()) },
+                        enabled = url.isNotBlank() && !subscriptionImporting,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = OnAccent),
+                        contentPadding = PaddingValues(14.dp),
+                    ) {
+                        if (subscriptionImporting) {
+                            CircularProgressIndicator(Modifier.size(16.dp), color = OnAccent, strokeWidth = 2.dp)
+                            Spacer(Modifier.width(10.dp))
+                        }
+                        Text(
+                            if (subscriptionImporting) "Importing…" else "Import",
+                            fontWeight = FontWeight.Bold, fontSize = 15.sp,
+                        )
+                    }
+                }
+            }
+
+            if (subscriptions.isEmpty() && !showAdd) {
+                Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
+                    Text("No subscriptions yet.\nTap + to add one.", color = Dim, fontSize = 14.sp, textAlign = TextAlign.Center, lineHeight = 22.sp)
+                }
+            } else if (subscriptions.isNotEmpty()) {
+                SettingsSection("Saved") {
+                    subscriptions.forEachIndexed { i, sub ->
+                        if (i > 0) HorizontalDivider(color = Border)
+                        Row(
+                            Modifier.fillMaxWidth().background(Surface).padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(sub.name, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(sub.url, fontSize = 11.sp, color = Dim, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+                            }
+                            Box(
+                                Modifier.size(30.dp).clip(RoundedCornerShape(9.dp)).clickable { onDelete(sub) },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(Icons.Default.Delete, "Delete", tint = Danger.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -903,7 +1116,10 @@ fun GeoSettingsScreen(
     Column(Modifier.fillMaxSize()) {
         PushHeader("Geo data", onBack)
         Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 16.dp),
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 18.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(22.dp),
         ) {
             SettingsSection("Filtering") {
@@ -927,7 +1143,10 @@ fun GeoSettingsScreen(
 
                 SettingsSection("Source") {
                     Column(
-                        Modifier.fillMaxWidth().background(Surface).padding(14.dp),
+                        Modifier
+                            .fillMaxWidth()
+                            .background(Surface)
+                            .padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
                         GeoUrlField("geoip.dat URL", geoipUrl, onGeoipUrl)
@@ -1008,7 +1227,9 @@ fun SettingsSection(label: String, content: @Composable () -> Unit) {
     Column(Modifier.fillMaxWidth()) {
         SectionLabel(label)
         Column(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
                 .border(1.dp, Border, RoundedCornerShape(16.dp))
         ) { content() }
     }
@@ -1022,7 +1243,9 @@ fun SettingRow(
     trailing: @Composable () -> Unit,
 ) {
     Row(
-        Modifier.fillMaxWidth().background(Surface)
+        Modifier
+            .fillMaxWidth()
+            .background(Surface)
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -1040,12 +1263,18 @@ fun SettingRow(
 fun SmolToggle(on: Boolean, onChange: (Boolean) -> Unit) {
     val thumbPad by animateDpAsState(if (on) 21.dp else 2.dp, tween(200), label = "toggle")
     Box(
-        Modifier.size(width = 46.dp, height = 27.dp).clip(RoundedCornerShape(20.dp))
+        Modifier
+            .size(width = 46.dp, height = 27.dp)
+            .clip(RoundedCornerShape(20.dp))
             .border(1.dp, if (on) Accent else Border2, RoundedCornerShape(20.dp))
-            .background(if (on) AccentSoft else Surface3).clickable { onChange(!on) },
+            .background(if (on) AccentSoft else Surface3)
+            .clickable { onChange(!on) },
     ) {
         Box(
-            Modifier.offset(x = thumbPad, y = 3.dp).size(21.dp).clip(CircleShape)
+            Modifier
+                .offset(x = thumbPad, y = 3.dp)
+                .size(21.dp)
+                .clip(CircleShape)
                 .background(if (on) Accent else Dim)
         )
     }
@@ -1072,7 +1301,10 @@ fun EditServerScreen(config: Config, onSave: (Config) -> Unit, onDelete: () -> U
             ) { Text("Save", fontWeight = FontWeight.Bold) }
         }
         Column(
-            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(18.dp),
+            Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             Column {
@@ -1121,25 +1353,35 @@ fun inputColors() = OutlinedTextFieldDefaults.colors(
 @Composable
 fun ImportScreen(
     addError: String?,
+    subscriptionImporting: Boolean,
     onAdd: (String) -> Unit,
+    onSubscription: (String) -> Unit,
     onBack: () -> Unit,
     onClearError: () -> Unit,
     onToast: (String) -> Unit,
 ) {
     val context = LocalContext.current
+    var expanded by remember { mutableStateOf<String?>(null) } // "manual" | "subscription"
     var manualInput by remember { mutableStateOf("") }
-    var showManual by remember { mutableStateOf(false) }
+    var subscriptionUrl by remember { mutableStateOf("") }
 
     Column(Modifier.fillMaxSize()) {
         PushHeader("Add a server", onBack)
         Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 16.dp),
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 18.dp, vertical = 16.dp),
         ) {
             // QR placeholder
             Box(
-                Modifier.size(150.dp).align(Alignment.CenterHorizontally)
-                    .clip(RoundedCornerShape(16.dp)).border(1.dp, Border, RoundedCornerShape(16.dp))
-                    .background(Surface).padding(14.dp),
+                Modifier
+                    .size(150.dp)
+                    .align(Alignment.CenterHorizontally)
+                    .clip(RoundedCornerShape(16.dp))
+                    .border(1.dp, Border, RoundedCornerShape(16.dp))
+                    .background(Surface)
+                    .padding(14.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(Icons.Default.QrCode, null, tint = Dim, modifier = Modifier.size(72.dp))
@@ -1160,24 +1402,84 @@ fun ImportScreen(
                 onClick = {
                     val clip = (context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager)
                         ?.primaryClip?.getItemAt(0)?.text?.toString().orEmpty()
-                    if (clip.isNotBlank()) { manualInput = clip; showManual = true }
+                    if (clip.isNotBlank()) {
+                        manualInput = clip; expanded = "manual"; onClearError()
+                    }
                     else onToast("Clipboard is empty")
                 },
             )
             Spacer(Modifier.height(11.dp))
             ImportOption(
                 icon = { Icon(Icons.Default.Link, null, tint = Accent, modifier = Modifier.size(20.dp)) },
-                title = "Subscription link", sub = "A group that auto-updates",
-                onClick = { onToast("Subscriptions coming soon") },
+                title = "Subscription link", sub = "A URL returning a list of servers",
+                onClick = {
+                    expanded =
+                        if (expanded == "subscription") null else "subscription"; onClearError()
+                },
             )
             Spacer(Modifier.height(11.dp))
             ImportOption(
                 icon = { Icon(Icons.Default.Edit, null, tint = Accent, modifier = Modifier.size(19.dp)) },
                 title = "Enter manually", sub = "Type or paste the config",
-                onClick = { showManual = true },
+                onClick = {
+                    expanded = if (expanded == "manual") null else "manual"; onClearError()
+                },
             )
 
-            AnimatedVisibility(visible = showManual) {
+            AnimatedVisibility(visible = expanded == "subscription") {
+                Column(Modifier.padding(top = 18.dp)) {
+                    SectionLabel("Subscription URL")
+                    OutlinedTextField(
+                        value = subscriptionUrl,
+                        onValueChange = { subscriptionUrl = it; onClearError() },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        placeholder = {
+                            Text(
+                                "https://…",
+                                color = Dim,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 12.5.sp
+                            )
+                        },
+                        isError = addError != null,
+                        supportingText = addError?.let { err -> { Text(err, color = Danger) } },
+                        singleLine = true,
+                        textStyle = LocalTextStyle.current.copy(
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 12.5.sp
+                        ),
+                        colors = inputColors(),
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Button(
+                        onClick = { onSubscription(subscriptionUrl.trim()) },
+                        enabled = subscriptionUrl.isNotBlank() && !subscriptionImporting,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Accent,
+                            contentColor = OnAccent
+                        ),
+                        contentPadding = PaddingValues(14.dp),
+                    ) {
+                        if (subscriptionImporting) {
+                            CircularProgressIndicator(
+                                Modifier.size(16.dp),
+                                color = OnAccent,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(Modifier.width(10.dp))
+                        }
+                        Text(
+                            if (subscriptionImporting) "Importing…" else "Import servers",
+                            fontWeight = FontWeight.Bold, fontSize = 15.sp,
+                        )
+                    }
+                }
+            }
+
+            AnimatedVisibility(visible = expanded == "manual") {
                 Column(Modifier.padding(top = 18.dp)) {
                     SectionLabel("vless:// link or JSON config")
                     OutlinedTextField(
@@ -1209,12 +1511,22 @@ fun ImportScreen(
 @Composable
 fun ImportOption(icon: @Composable () -> Unit, title: String, sub: String, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).border(1.dp, Border, RoundedCornerShape(16.dp))
-            .background(Surface).clickable(onClick = onClick).padding(15.dp),
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .border(1.dp, Border, RoundedCornerShape(16.dp))
+            .background(Surface)
+            .clickable(onClick = onClick)
+            .padding(15.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Box(Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(AccentSoft), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier
+                .size(44.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(AccentSoft), contentAlignment = Alignment.Center
+        ) {
             icon()
         }
         Column(Modifier.weight(1f)) {
@@ -1252,8 +1564,11 @@ fun AppPickerDialog(allowedApps: Set<String>, onDismiss: () -> Unit, onConfirm: 
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp)
-                .clip(RoundedCornerShape(22.dp)).background(Surface)
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp)
+                .clip(RoundedCornerShape(22.dp))
+                .background(Surface)
         ) {
             Text("Split tunneling", fontSize = 19.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary,
                 modifier = Modifier.padding(start = 24.dp, top = 24.dp, end = 24.dp, bottom = 16.dp))
@@ -1261,21 +1576,33 @@ fun AppPickerDialog(allowedApps: Set<String>, onDismiss: () -> Unit, onConfirm: 
                 value = query, onValueChange = { query = it },
                 placeholder = { Text("Search", color = Dim) },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
                 shape = RoundedCornerShape(12.dp),
                 colors = inputColors(),
             )
             if (loading) {
-                Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(120.dp), contentAlignment = Alignment.Center
+                ) {
                     CircularProgressIndicator(color = Accent)
                 }
             } else {
-                LazyColumn(Modifier.fillMaxWidth().height(400.dp)) {
+                LazyColumn(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(400.dp)
+                ) {
                     items(filtered, key = { it.packageName }) { app ->
                         Row(
-                            Modifier.fillMaxWidth()
+                            Modifier
+                                .fillMaxWidth()
                                 .clickable {
-                                    selected = if (app.packageName in selected) selected - app.packageName else selected + app.packageName
+                                    selected =
+                                        if (app.packageName in selected) selected - app.packageName else selected + app.packageName
                                 }
                                 .padding(horizontal = 16.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -1313,7 +1640,12 @@ fun AppPickerDialog(allowedApps: Set<String>, onDismiss: () -> Unit, onConfirm: 
                     }
                 }
             }
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 if (selected.isNotEmpty()) {
                     TextButton(onClick = { selected = emptySet() }) { Text("Clear", color = Dim) }
                 }
@@ -1336,8 +1668,11 @@ fun AppPickerDialog(allowedApps: Set<String>, onDismiss: () -> Unit, onConfirm: 
 @Composable
 fun GeoUpdateBanner(onSkip: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
-            .border(1.dp, Border, RoundedCornerShape(16.dp)).background(Surface)
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .border(1.dp, Border, RoundedCornerShape(16.dp))
+            .background(Surface)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -1362,13 +1697,18 @@ fun BoxScope.ToastOverlay(toast: ToastData?, onDismiss: () -> Unit) {
     }
     AnimatedVisibility(
         visible = toast != null,
-        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 34.dp),
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .padding(bottom = 34.dp),
         enter = fadeIn(tween(200)) + slideInVertically(tween(200)) { it / 2 },
         exit = fadeOut(tween(200)),
     ) {
         Row(
-            Modifier.clip(RoundedCornerShape(30.dp)).border(1.dp, Border2, RoundedCornerShape(30.dp))
-                .background(Color(0xFF06120C)).padding(horizontal = 17.dp, vertical = 11.dp),
+            Modifier
+                .clip(RoundedCornerShape(30.dp))
+                .border(1.dp, Border2, RoundedCornerShape(30.dp))
+                .background(Color(0xFF06120C))
+                .padding(horizontal = 17.dp, vertical = 11.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(9.dp),
         ) {

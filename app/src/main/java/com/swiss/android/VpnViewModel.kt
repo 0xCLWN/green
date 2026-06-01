@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
 import android.net.VpnService
+import android.util.Base64
 import androidx.activity.result.ActivityResultLauncher
 import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
@@ -44,6 +45,7 @@ data class GeoState(
 
 class VpnViewModel(app: Application) : AndroidViewModel(app) {
     private val dao = AppDatabase.get(app).configDao()
+    private val subDao = AppDatabase.get(app).subscriptionDao()
     private val prefs: SharedPreferences =
         app.getSharedPreferences(Prefs.NAME, Context.MODE_PRIVATE)
 
@@ -58,6 +60,9 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
     private val _connectTimeMs = MutableStateFlow<Long?>(null)
     val connectTimeMs: StateFlow<Long?> = _connectTimeMs.asStateFlow()
 
+    val subscriptions: StateFlow<List<com.swiss.android.data.Subscription>> = subDao.getAllFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     init {
         viewModelScope.launch { seedDefaultConfigs() }
         viewModelScope.launch {
@@ -65,6 +70,7 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
                 _connectTimeMs.value = if (s == VpnStatus.CONNECTED) System.currentTimeMillis() else null
             }
         }
+        viewModelScope.launch(Dispatchers.IO) { runCatching { refreshAllSubscriptions() } }
     }
 
     val configs: StateFlow<List<Config>> = dao.getAll()
@@ -77,6 +83,9 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _addError = MutableStateFlow<String?>(null)
     val addError: StateFlow<String?> = _addError.asStateFlow()
+
+    private val _subscriptionImporting = MutableStateFlow(false)
+    val subscriptionImporting: StateFlow<Boolean> = _subscriptionImporting.asStateFlow()
 
     val status: StateFlow<VpnStatus> = VpnState.status.asStateFlow()
 
@@ -177,6 +186,119 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
                 _addError.value = e.message ?: "Invalid input"
             }
         }
+    }
+
+    fun addSubscription(url: String) {
+        viewModelScope.launch {
+            _addError.value = null
+            _subscriptionImporting.value = true
+            try {
+                withContext(Dispatchers.IO) {
+                    val name = runCatching { java.net.URL(url).host }.getOrElse { url.take(30) }
+                    val subId = subDao.insert(com.swiss.android.data.Subscription(url = url, name = name)).toInt()
+                    val links = fetchSubscriptionLinks(url)
+                    if (links.isEmpty()) {
+                        _addError.value =
+                            "No VLESS servers found in subscription"; return@withContext
+                    }
+                    var added = 0
+                    for (link in links) {
+                        runCatching {
+                            Libswiss.validateVlessKey(link)
+                            dao.insert(
+                                Config(
+                                    name = linkName(link),
+                                    vlessLink = link,
+                                    subscriptionId = subId
+                                )
+                            )
+                            added++
+                        }
+                    }
+                    if (added == 0) _addError.value = "No valid VLESS servers found"
+                }
+            } catch (e: Exception) {
+                _addError.value = e.message ?: "Failed to fetch subscription"
+            } finally {
+                _subscriptionImporting.value = false
+            }
+        }
+    }
+
+    fun deleteSubscription(sub: com.swiss.android.data.Subscription) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                dao.deleteBySubscriptionId(sub.id)
+                subDao.delete(sub)
+            }
+            val selId = _selectedId.value ?: return@launch
+            val stillExists = withContext(Dispatchers.IO) { dao.getById(selId) != null }
+            if (!stillExists) _selectedId.value = null
+        }
+    }
+
+    private suspend fun refreshAllSubscriptions() {
+        val subs = subDao.getAll()
+        for (sub in subs) runCatching { refreshSubscription(sub) }
+        // Clear selection if its config was deleted during refresh
+        if (_selectedId.value != null && dao.getById(_selectedId.value!!) == null) {
+            _selectedId.value = null
+        }
+    }
+
+    private suspend fun refreshSubscription(sub: com.swiss.android.data.Subscription) {
+        val newLinks = fetchSubscriptionLinks(sub.url)
+        val existing = dao.getBySubscriptionId(sub.id)
+        val existingByBase = existing.associateBy { it.vlessLink?.substringBefore("#").orEmpty() }
+        val newByBase = newLinks.associateBy { it.substringBefore("#") }
+
+        for (config in existing) {
+            if (config.vlessLink?.substringBefore("#") !in newByBase) dao.delete(config)
+        }
+        for (link in newLinks) {
+            val base = link.substringBefore("#")
+            val name = linkName(link)
+            val existing = existingByBase[base]
+            when {
+                existing == null -> dao.insert(
+                    Config(
+                        name = name,
+                        vlessLink = link,
+                        subscriptionId = sub.id
+                    )
+                )
+
+                existing.name != name -> dao.update(existing.copy(name = name, vlessLink = link))
+            }
+        }
+    }
+
+    private fun fetchSubscriptionLinks(url: String): List<String> {
+        val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+        conn.connectTimeout = 10_000
+        conn.readTimeout = 10_000
+        conn.setRequestProperty("User-Agent", "smol-vpn/1.0")
+        val raw = try {
+            conn.inputStream.bufferedReader().readText()
+        } finally {
+            conn.disconnect()
+        }
+        val text = decodeBase64(raw) ?: raw
+        return text.lineSequence().map { it.trim() }.filter { it.startsWith("vless://") }.toList()
+    }
+
+    private fun linkName(link: String) =
+        java.net.URLDecoder.decode(link.substringAfterLast("#", ""), "UTF-8")
+            .ifBlank { link.substringAfter("@").substringBefore("?") }
+
+    private fun decodeBase64(s: String): String? {
+        for (flags in listOf(Base64.DEFAULT, Base64.URL_SAFE)) {
+            runCatching {
+                val decoded = Base64.decode(s.trim(), flags).toString(Charsets.UTF_8)
+                if (decoded.contains("://")) return decoded
+            }
+        }
+        return null
     }
 
     private fun nameFromJsonConfig(json: String): String {

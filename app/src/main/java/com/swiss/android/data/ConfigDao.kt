@@ -23,4 +23,10 @@ interface ConfigDao {
 
     @Update
     suspend fun update(config: Config)
+
+    @Query("SELECT * FROM configs WHERE subscriptionId = :subId")
+    suspend fun getBySubscriptionId(subId: Int): List<Config>
+
+    @Query("DELETE FROM configs WHERE subscriptionId = :subId")
+    suspend fun deleteBySubscriptionId(subId: Int)
 }
