@@ -37,8 +37,24 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
     private val prefs: SharedPreferences =
         app.getSharedPreferences("swiss", Context.MODE_PRIVATE)
 
+    private val _autoConnect = MutableStateFlow(prefs.getBoolean("auto_connect", false))
+    val autoConnect: StateFlow<Boolean> = _autoConnect.asStateFlow()
+    fun setAutoConnect(v: Boolean) { _autoConnect.value = v; prefs.edit { putBoolean("auto_connect", v) } }
+
+    private val _notify = MutableStateFlow(prefs.getBoolean("notify", true))
+    val notify: StateFlow<Boolean> = _notify.asStateFlow()
+    fun setNotify(v: Boolean) { _notify.value = v; prefs.edit { putBoolean("notify", v) } }
+
+    private val _connectTimeMs = MutableStateFlow<Long?>(null)
+    val connectTimeMs: StateFlow<Long?> = _connectTimeMs.asStateFlow()
+
     init {
         viewModelScope.launch { seedDefaultConfigs() }
+        viewModelScope.launch {
+            VpnState.status.collect { s ->
+                _connectTimeMs.value = if (s == VpnStatus.CONNECTED) System.currentTimeMillis() else null
+            }
+        }
     }
 
     val configs: StateFlow<List<Config>> = dao.getAll()
@@ -70,6 +86,7 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
     private var geoUpdateJob: Job? = null
     // END GEO UPDATE
 
+    private var connectJob: Job? = null
     private var pendingConfigJson: String? = null
     private var pendingDnsServer: String = "1.1.1.1"
     private var pendingSocksPort: Int = 10808
@@ -179,14 +196,19 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
         _addError.value = null
     }
 
+    fun updateConfig(config: Config) {
+        viewModelScope.launch { dao.update(config) }
+    }
+
     fun deleteConfig(config: Config) {
         viewModelScope.launch { dao.delete(config) }
         if (_selectedId.value == config.id) _selectedId.value = null
     }
 
     fun connect(context: Context, launcher: ActivityResultLauncher<Intent>) {
+        connectJob?.cancel()
         val config = configs.value.find { it.id == _selectedId.value } ?: return
-        viewModelScope.launch {
+        connectJob = viewModelScope.launch {
             // GEO UPDATE — remove this block to disable
             val filesDir = getApplication<Application>().filesDir
             if (GeoUpdater.ENABLED && GeoUpdater.isStale(filesDir)) {
@@ -247,6 +269,7 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
                     resolved.socksPort,
                     resolved.socksUser,
                     resolved.socksPass,
+                    _notify.value,
                 )
             } catch (e: Exception) {
                 VpnState.status.value = VpnStatus.DISCONNECTED
@@ -255,6 +278,8 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun onPermissionDenied() {
+        connectJob?.cancel()
+        connectJob = null
         VpnState.status.value = VpnStatus.DISCONNECTED
     }
 
@@ -265,11 +290,15 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
             pendingDnsServer,
             pendingSocksPort,
             pendingSocksUser,
-            pendingSocksPass
+            pendingSocksPass,
+            _notify.value,
         )
     }
 
     fun disconnect(context: Context) {
+        connectJob?.cancel()
+        connectJob = null
+        _geoUpdating.value = false
         context.startService(
             Intent(context, SwissVpnService::class.java).apply {
                 action = SwissVpnService.ACTION_STOP
@@ -283,7 +312,8 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
         dnsServer: String,
         socksPort: Int,
         socksUser: String,
-        socksPass: String
+        socksPass: String,
+        notify: Boolean,
     ) {
         VpnState.status.value = VpnStatus.CONNECTING
         context.startForegroundService(
@@ -294,6 +324,7 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
                 putExtra(SwissVpnService.EXTRA_SOCKS_PORT, socksPort)
                 putExtra(SwissVpnService.EXTRA_SOCKS_USER, socksUser)
                 putExtra(SwissVpnService.EXTRA_SOCKS_PASS, socksPass)
+                putExtra(SwissVpnService.EXTRA_NOTIFY, notify)
                 putStringArrayListExtra(
                     SwissVpnService.EXTRA_ALLOWED_APPS,
                     ArrayList(_allowedApps.value)

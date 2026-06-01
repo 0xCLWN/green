@@ -26,28 +26,34 @@ class SwissVpnService : VpnService() {
         const val EXTRA_SOCKS_USER = "socks_user"
         const val EXTRA_SOCKS_PASS = "socks_pass"
         const val EXTRA_ALLOWED_APPS = "allowed_apps"
+        const val EXTRA_NOTIFY = "notify"
         private const val NOTIF_ID = 1
         private const val NOTIF_CHANNEL = "swiss_vpn"
+        private const val NOTIF_CHANNEL_SILENT = "swiss_vpn_silent"
         private const val TUN_ADDRESS = "198.18.0.1"
     }
 
     private var vpnInterface: ParcelFileDescriptor? = null
+    private var showNotify = true
 
     override fun onCreate() {
         super.onCreate()
-        createNotificationChannel()
+        createNotificationChannels()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_START -> startVpn(
-                intent.getStringExtra(EXTRA_CONFIG_JSON),
-                intent.getStringExtra(EXTRA_DNS_SERVER) ?: "1.1.1.1",
-                intent.getIntExtra(EXTRA_SOCKS_PORT, 10808),
-                intent.getStringExtra(EXTRA_SOCKS_USER) ?: "",
-                intent.getStringExtra(EXTRA_SOCKS_PASS) ?: "",
-                intent.getStringArrayListExtra(EXTRA_ALLOWED_APPS) ?: emptyList(),
-            )
+            ACTION_START -> {
+                showNotify = intent.getBooleanExtra(EXTRA_NOTIFY, true)
+                startVpn(
+                    intent.getStringExtra(EXTRA_CONFIG_JSON),
+                    intent.getStringExtra(EXTRA_DNS_SERVER) ?: "1.1.1.1",
+                    intent.getIntExtra(EXTRA_SOCKS_PORT, 10808),
+                    intent.getStringExtra(EXTRA_SOCKS_USER) ?: "",
+                    intent.getStringExtra(EXTRA_SOCKS_PASS) ?: "",
+                    intent.getStringArrayListExtra(EXTRA_ALLOWED_APPS) ?: emptyList(),
+                )
+            }
 
             ACTION_STOP -> stopVpn()
         }
@@ -122,25 +128,29 @@ class SwissVpnService : VpnService() {
         return File(filesDir, "tun.yaml").also { it.writeText(yaml) }.absolutePath
     }
 
-    private fun createNotificationChannel() {
-        val channel = NotificationChannel(
-            NOTIF_CHANNEL, "VPN Status", NotificationManager.IMPORTANCE_LOW
-        )
-        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+    private fun createNotificationChannels() {
+        val nm = getSystemService(NotificationManager::class.java)
+        nm.createNotificationChannel(NotificationChannel(NOTIF_CHANNEL, "VPN Status", NotificationManager.IMPORTANCE_LOW))
+        nm.createNotificationChannel(NotificationChannel(NOTIF_CHANNEL_SILENT, "VPN Status (silent)", NotificationManager.IMPORTANCE_MIN).also {
+            it.setShowBadge(false)
+        })
     }
 
     private fun buildNotification(status: String): Notification {
+        val channel = if (showNotify) NOTIF_CHANNEL else NOTIF_CHANNEL_SILENT
         val stopIntent = PendingIntent.getService(
             this, 0,
             Intent(this, SwissVpnService::class.java).apply { action = ACTION_STOP },
             PendingIntent.FLAG_IMMUTABLE
         )
-        return NotificationCompat.Builder(this, NOTIF_CHANNEL)
+        return NotificationCompat.Builder(this, channel)
             .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setContentTitle("Swiss VPN")
             .setContentText(status)
             .addAction(0, "Disconnect", stopIntent)
             .setOngoing(true)
+            .setPriority(if (showNotify) NotificationCompat.PRIORITY_LOW else NotificationCompat.PRIORITY_MIN)
+            .setSilent(!showNotify)
             .build()
     }
 
