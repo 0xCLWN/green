@@ -28,8 +28,6 @@ import java.util.UUID
 
 enum class VpnStatus { DISCONNECTED, CONNECTING, CONNECTED }
 
-data class AppInfo(val packageName: String, val label: String)
-
 object VpnState {
     val status = MutableStateFlow(VpnStatus.DISCONNECTED)
 }
@@ -254,6 +252,10 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
                 VpnState.status.value = VpnStatus.DISCONNECTED
             }
         }
+    }
+
+    fun onPermissionDenied() {
+        VpnState.status.value = VpnStatus.DISCONNECTED
     }
 
     fun onPermissionGranted(context: Context) {

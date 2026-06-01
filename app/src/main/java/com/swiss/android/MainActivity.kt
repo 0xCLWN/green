@@ -73,6 +73,8 @@ import com.swiss.android.ui.theme.SwissTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+data class AppInfo(val packageName: String, val label: String)
+
 class MainActivity : ComponentActivity() {
     private val viewModel: VpnViewModel by viewModels()
 
@@ -111,7 +113,7 @@ fun MainScreen(viewModel: VpnViewModel) {
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) viewModel.onPermissionGranted(context)
-        else VpnState.status.value = VpnStatus.DISCONNECTED
+        else viewModel.onPermissionDenied()
     }
 
     Scaffold(
