@@ -28,6 +28,10 @@ android {
     }
 
     buildTypes {
+        debug {
+            applicationIdSuffix = ".dev"
+            resValue("string", "app_name", "swiss·dev")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
@@ -43,6 +47,7 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+        resValues = true
     }
 
     externalNativeBuild {

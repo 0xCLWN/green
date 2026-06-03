@@ -57,19 +57,11 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
     val notify: StateFlow<Boolean> = _notify.asStateFlow()
     fun setNotify(v: Boolean) { _notify.value = v; prefs.edit { putBoolean(Prefs.NOTIFY, v) } }
 
-    private val _connectTimeMs = MutableStateFlow<Long?>(null)
-    val connectTimeMs: StateFlow<Long?> = _connectTimeMs.asStateFlow()
-
     val subscriptions: StateFlow<List<com.swiss.android.data.Subscription>> = subDao.getAllFlow()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     init {
         viewModelScope.launch { seedDefaultConfigs() }
-        viewModelScope.launch {
-            VpnState.status.collect { s ->
-                _connectTimeMs.value = if (s == VpnStatus.CONNECTED) System.currentTimeMillis() else null
-            }
-        }
         viewModelScope.launch(Dispatchers.IO) { runCatching { refreshAllSubscriptions() } }
     }
 

@@ -162,7 +162,6 @@ fun VpnApp(viewModel: VpnViewModel) {
     val allowedApps by viewModel.allowedApps.collectAsState()
     val addError by viewModel.addError.collectAsState()
     val subscriptionImporting by viewModel.subscriptionImporting.collectAsState()
-    val connectTimeMs by viewModel.connectTimeMs.collectAsState()
     val autoConnect by viewModel.autoConnect.collectAsState()
     val notify by viewModel.notify.collectAsState()
     val geo by viewModel.geo.collectAsState()
@@ -257,7 +256,6 @@ fun VpnApp(viewModel: VpnViewModel) {
         ConnectedLayer(
             visible = layerVisible,
             config = configs.find { it.id == selectedId },
-            connectTimeMs = connectTimeMs,
             allowedApps = allowedApps,
             status = status,
             shake = shake,
@@ -631,7 +629,6 @@ fun AddServerCard(onClick: () -> Unit) {
 fun ConnectedLayer(
     visible: Boolean,
     config: Config?,
-    connectTimeMs: Long?,
     allowedApps: Set<String>,
     status: VpnStatus,
     shake: Boolean,
@@ -667,17 +664,6 @@ fun ConnectedLayer(
         }
         onShakeDone()
     }
-
-    var uptimeSecs by remember { mutableIntStateOf(0) }
-    LaunchedEffect(connectTimeMs) {
-        if (connectTimeMs == null) { uptimeSecs = 0; return@LaunchedEffect }
-        while (true) {
-            uptimeSecs = ((System.currentTimeMillis() - connectTimeMs) / 1000).toInt().coerceAtLeast(0)
-            delay(1000)
-        }
-    }
-    val h = uptimeSecs / 3600; val m = (uptimeSecs % 3600) / 60; val s = uptimeSecs % 60
-    val uptime = (if (h > 0) "%02d:".format(h) else "") + "%02d:%02d".format(m, s)
 
     var testState by remember { mutableStateOf<String?>(null) }
     val testOk = testState?.startsWith("ok:") == true
@@ -777,8 +763,6 @@ fun ConnectedLayer(
             SplitTunnelLine(allowedApps = allowedApps, readOnly = true, onClick = onSplitTap)
             Spacer(Modifier.height(18.dp))
 
-            StatBox("Uptime", uptime, "", Modifier.fillMaxWidth())
-
             Spacer(Modifier.weight(1f))
 
             // Test connection
@@ -851,26 +835,6 @@ fun PulsingDot() {
                 .clip(CircleShape)
                 .background(Glow)
         )
-    }
-}
-
-@Composable
-fun StatBox(label: String, value: String, unit: String, modifier: Modifier = Modifier) {
-    Column(
-        modifier
-            .clip(RoundedCornerShape(16.dp))
-            .border(1.dp, Color.White.copy(0.12f), RoundedCornerShape(16.dp))
-            .background(Color.Black.copy(0.2f))
-            .padding(horizontal = 14.dp, vertical = 13.dp),
-    ) {
-        Text(label.uppercase(), fontSize = 11.sp, letterSpacing = 0.8.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF9FD9B3))
-        Row(verticalAlignment = Alignment.Bottom) {
-            Text(value, fontSize = 25.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace, color = Color.White, letterSpacing = (-1).sp)
-            if (unit.isNotEmpty()) {
-                Spacer(Modifier.width(3.dp))
-                Text(unit, fontSize = 13.sp, color = Color(0xFFBDECCD), modifier = Modifier.padding(bottom = 3.dp))
-            }
-        }
     }
 }
 

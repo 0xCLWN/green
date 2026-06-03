@@ -138,8 +138,13 @@ class SwissVpnService : VpnService() {
 
     private fun buildNotification(status: String): Notification {
         val channel = if (showNotify) NOTIF_CHANNEL else NOTIF_CHANNEL_SILENT
-        val stopIntent = PendingIntent.getService(
+        val openIntent = PendingIntent.getActivity(
             this, 0,
+            Intent(this, MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_SINGLE_TOP },
+            PendingIntent.FLAG_IMMUTABLE
+        )
+        val stopIntent = PendingIntent.getService(
+            this, 1,
             Intent(this, SwissVpnService::class.java).apply { action = ACTION_STOP },
             PendingIntent.FLAG_IMMUTABLE
         )
@@ -147,6 +152,7 @@ class SwissVpnService : VpnService() {
             .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setContentTitle("Swiss VPN")
             .setContentText(status)
+            .setContentIntent(openIntent)
             .addAction(0, "Disconnect", stopIntent)
             .setOngoing(true)
             .setPriority(if (showNotify) NotificationCompat.PRIORITY_LOW else NotificationCompat.PRIORITY_MIN)
