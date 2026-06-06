@@ -30,7 +30,7 @@ android {
     buildTypes {
         debug {
             applicationIdSuffix = ".dev"
-            resValue("string", "app_name", "swiss·dev")
+            resValue("string", "app_name", "swiss.dev")
         }
         release {
             isMinifyEnabled = false

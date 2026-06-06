@@ -9,12 +9,12 @@ import (
 	"strings"
 	"syscall"
 
-	xnet "github.com/0x1488/xray-core/common/net"
-	"github.com/0x1488/xray-core/core"
-	"github.com/0x1488/xray-core/extra"
-	"github.com/0x1488/xray-core/infra/conf"
-	"github.com/0x1488/xray-core/infra/conf/serial"
-	"github.com/0x1488/xray-core/transport/internet"
+	xnet "github.com/0xCLWN/xray-core/common/net"
+	"github.com/0xCLWN/xray-core/core"
+	"github.com/0xCLWN/xray-core/extra"
+	"github.com/0xCLWN/xray-core/infra/conf"
+	"github.com/0xCLWN/xray-core/infra/conf/serial"
+	"github.com/0xCLWN/xray-core/transport/internet"
 )
 
 // Protector is implemented by the Android VpnService to protect outbound sockets
