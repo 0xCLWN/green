@@ -3,6 +3,10 @@ package com.swiss.android
 import android.app.Activity
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
@@ -103,6 +107,8 @@ import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -223,7 +229,7 @@ fun VpnApp(viewModel: VpnViewModel) {
     // Intercept back when connected layer is up (lower priority — fires only when no pushed screen)
     BackHandler(enabled = layerVisible) {
         shake = true
-        showToast("Disconnect to go back", warn = true)
+        showToast(context.getString(R.string.toast_disconnect_to_go_back), warn = true)
     }
 
     Box(
@@ -260,8 +266,8 @@ fun VpnApp(viewModel: VpnViewModel) {
             status = status,
             shake = shake,
             onDisconnect = { viewModel.disconnect(context) },
-            onLocked = { shake = true; showToast("Disconnect to change settings", warn = true) },
-            onSplitTap = { shake = true; showToast("Disconnect to change split tunneling", warn = true) },
+            onLocked = { shake = true; showToast(context.getString(R.string.toast_disconnect_to_change_settings), warn = true) },
+            onSplitTap = { shake = true; showToast(context.getString(R.string.toast_disconnect_to_change_split), warn = true) },
             onShakeDone = { shake = false },
         )
 
@@ -315,8 +321,8 @@ fun VpnApp(viewModel: VpnViewModel) {
             if (cfg != null) {
                 EditServerScreen(
                     config = cfg,
-                    onSave = { viewModel.updateConfig(it); screen = NavScreen.Home; showToast("Server saved") },
-                    onDelete = { viewModel.deleteConfig(cfg); screen = NavScreen.Home; showToast("Server deleted") },
+                    onSave = { viewModel.updateConfig(it); screen = NavScreen.Home; showToast(context.getString(R.string.toast_server_saved)) },
+                    onDelete = { viewModel.deleteConfig(cfg); screen = NavScreen.Home; showToast(context.getString(R.string.toast_server_deleted)) },
                     onBack = { screen = NavScreen.Home },
                 )
             }
@@ -392,10 +398,10 @@ fun HomeContent(
                 ) {
                     Icon(Icons.Default.Security, null, tint = Accent, modifier = Modifier.size(15.dp))
                 }
-                Text("smol vpn", fontWeight = FontWeight.Bold, fontSize = 19.sp, letterSpacing = (-0.3).sp, color = TextPrimary)
+                Text(stringResource(R.string.app_title), fontWeight = FontWeight.Bold, fontSize = 19.sp, letterSpacing = (-0.3).sp, color = TextPrimary)
             }
             SmolIconBtn(onClick = onOpenSettings) {
-                Icon(Icons.Default.Settings, "Settings", tint = TextPrimary, modifier = Modifier.size(20.dp))
+                Icon(Icons.Default.Settings, stringResource(R.string.cd_settings), tint = TextPrimary, modifier = Modifier.size(20.dp))
             }
         }
 
@@ -429,10 +435,10 @@ fun HomeContent(
                 }
             }
             Spacer(Modifier.height(15.dp))
-            Text("Not connected", fontSize = 25.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.4).sp, color = TextPrimary)
+            Text(stringResource(R.string.status_not_connected), fontSize = 25.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.4).sp, color = TextPrimary)
             Spacer(Modifier.height(7.dp))
             Text(
-                "Pick a server and tap connect to secure this device.",
+                stringResource(R.string.status_subtitle),
                 fontSize = 14.sp, color = Dim, textAlign = TextAlign.Center, lineHeight = 20.sp,
                 modifier = Modifier.widthIn(max = 240.dp),
             )
@@ -448,7 +454,7 @@ fun HomeContent(
         }
 
         Spacer(Modifier.height(20.dp))
-        SectionLabel("Servers")
+        SectionLabel(stringResource(R.string.section_servers))
 
         val subNameMap = remember(subscriptions) { subscriptions.associateBy { it.id } }
         LazyColumn(
@@ -484,7 +490,7 @@ fun HomeContent(
         ) {
             Icon(Icons.Default.PowerSettingsNew, null, modifier = Modifier.size(19.dp))
             Spacer(Modifier.width(10.dp))
-            Text("Connect", fontSize = 17.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.2.sp)
+            Text(stringResource(R.string.btn_connect), fontSize = 17.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.2.sp)
         }
     }
 }
@@ -542,17 +548,17 @@ fun SplitTunnelLine(allowedApps: Set<String>, readOnly: Boolean, onClick: (() ->
         }
         val label = buildAnnotatedString {
             if (allowedApps.isEmpty()) {
-                withStyle(SpanStyle(color = textColor)) { append("Whole-phone VPN · ") }
-                withStyle(SpanStyle(color = boldColor, fontWeight = FontWeight.SemiBold)) { append("all apps") }
+                withStyle(SpanStyle(color = textColor)) { append(stringResource(R.string.split_whole_phone) + " · ") }
+                withStyle(SpanStyle(color = boldColor, fontWeight = FontWeight.SemiBold)) { append(stringResource(R.string.split_all_apps)) }
             } else {
-                withStyle(SpanStyle(color = textColor)) { append("Split tunnel · ") }
-                withStyle(SpanStyle(color = boldColor, fontWeight = FontWeight.SemiBold)) { append("${allowedApps.size} apps") }
-                withStyle(SpanStyle(color = textColor)) { append(" tunneled") }
+                withStyle(SpanStyle(color = textColor)) { append(stringResource(R.string.split_tunnel_prefix) + " · ") }
+                withStyle(SpanStyle(color = boldColor, fontWeight = FontWeight.SemiBold)) { append(pluralStringResource(R.plurals.setting_split_n_apps, allowedApps.size, allowedApps.size)) }
+                withStyle(SpanStyle(color = textColor)) { append(" " + stringResource(R.string.split_tunneled_suffix)) }
             }
         }
         Text(label, modifier = Modifier.weight(1f), fontSize = 13.5.sp, lineHeight = 18.sp)
         if (!readOnly) {
-            Text("manage ›", fontSize = 12.sp, color = Accent, fontWeight = FontWeight.SemiBold)
+            Text(stringResource(R.string.split_manage), fontSize = 12.sp, color = Accent, fontWeight = FontWeight.SemiBold)
         }
     }
 }
@@ -587,8 +593,9 @@ fun ServerCard(config: Config, subscriptionName: String?, selected: Boolean, onS
         }
         Column(Modifier.weight(1f)) {
             Text(nameWithFlag(config.name), fontSize = 15.5.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val jsonConfigLabel = stringResource(R.string.server_json_config)
             val meta = buildString {
-                append(config.vlessLink?.substringAfter("@")?.substringBefore("?") ?: "json config")
+                append(config.vlessLink?.substringAfter("@")?.substringBefore("?") ?: jsonConfigLabel)
                 if (subscriptionName != null) append(" · $subscriptionName")
             }
             Text(meta, fontSize = 12.sp, color = Dim, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
@@ -600,7 +607,7 @@ fun ServerCard(config: Config, subscriptionName: String?, selected: Boolean, onS
                 .clickable(onClick = onEdit),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Default.MoreVert, "Edit", tint = Dim, modifier = Modifier.size(18.dp))
+            Icon(Icons.Default.MoreVert, stringResource(R.string.cd_edit), tint = Dim, modifier = Modifier.size(18.dp))
         }
     }
 }
@@ -619,7 +626,7 @@ fun AddServerCard(onClick: () -> Unit) {
     ) {
         Icon(Icons.Default.Add, null, tint = Dim, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(8.dp))
-        Text("Add server", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Dim)
+        Text(stringResource(R.string.btn_add_server), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Dim)
     }
 }
 
@@ -735,7 +742,7 @@ fun ConnectedLayer(
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                     PulsingDot()
                     Text(
-                        if (status == VpnStatus.CONNECTING) "Connecting…" else "Connected · secure",
+                        if (status == VpnStatus.CONNECTING) stringResource(R.string.status_connecting) else stringResource(R.string.status_connected),
                         fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.White,
                     )
                 }
@@ -750,7 +757,7 @@ fun ConnectedLayer(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     Icon(Icons.Default.Lock, null, tint = Color(0xFFCDEED8), modifier = Modifier.size(13.dp))
-                    Text("settings locked", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFCDEED8))
+                    Text(stringResource(R.string.settings_locked), fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFCDEED8))
                 }
             }
 
@@ -791,10 +798,10 @@ fun ConnectedLayer(
                     }
                     Text(
                         when {
-                            testState == "testing" -> "testing route…"
-                            testOk -> "route healthy · $testMsLabel ms"
-                            testFailed -> "route unreachable · tap to retry"
-                            else -> "Test connection"
+                            testState == "testing" -> stringResource(R.string.test_testing)
+                            testOk -> stringResource(R.string.test_ok, testMsLabel ?: "0")
+                            testFailed -> stringResource(R.string.test_failed)
+                            else -> stringResource(R.string.test_idle)
                         },
                         fontSize = 16.sp, fontWeight = FontWeight.Bold, color = testColor,
                     )
@@ -811,7 +818,7 @@ fun ConnectedLayer(
                 contentPadding = PaddingValues(vertical = 17.dp),
                 elevation = ButtonDefaults.buttonElevation(0.dp),
             ) {
-                Text("Disconnect", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.1.sp)
+                Text(stringResource(R.string.btn_disconnect), fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.1.sp)
             }
         }
     }
@@ -851,7 +858,7 @@ fun PushHeader(title: String, onBack: () -> Unit, trailing: (@Composable () -> U
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             SmolIconBtn(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = TextPrimary, modifier = Modifier.size(20.dp))
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.cd_back), tint = TextPrimary, modifier = Modifier.size(20.dp))
             }
             Text(title, fontSize = 19.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, modifier = Modifier.weight(1f))
             trailing?.invoke()
@@ -875,8 +882,9 @@ fun SettingsScreen(
     onSubscriptions: () -> Unit,
     onBack: () -> Unit,
 ) {
+    val context = LocalContext.current
     Column(Modifier.fillMaxSize()) {
-        PushHeader("Settings", onBack)
+        PushHeader(stringResource(R.string.screen_settings), onBack)
         Column(
             Modifier
                 .fillMaxSize()
@@ -884,26 +892,27 @@ fun SettingsScreen(
                 .padding(horizontal = 18.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(22.dp),
         ) {
-            SettingsSection("Connection") {
-                SettingRow("Auto-connect", "Connect on device boot and app launch") {
+            SettingsSection(stringResource(R.string.section_connection)) {
+                SettingRow(stringResource(R.string.setting_auto_connect), stringResource(R.string.setting_auto_connect_sub)) {
                     SmolToggle(autoConnect, onAutoConnect)
                 }
             }
-            SettingsSection("Routing") {
-                SettingRow("Split tunneling", "Choose which apps use the VPN", onClick = onSplit) {
+            SettingsSection(stringResource(R.string.section_routing)) {
+                SettingRow(stringResource(R.string.setting_split_tunneling), stringResource(R.string.setting_split_tunneling_sub), onClick = onSplit) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            if (allowedApps.isEmpty()) "All apps" else "${allowedApps.size} apps",
+                            if (allowedApps.isEmpty()) stringResource(R.string.setting_split_all_apps)
+                            else pluralStringResource(R.plurals.setting_split_n_apps, allowedApps.size, allowedApps.size),
                             fontSize = 13.sp, color = Accent, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold,
                         )
                         Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = Dim, modifier = Modifier.size(16.dp))
                     }
                 }
                 HorizontalDivider(color = Border)
-                SettingRow("Geo filtering", "Geoip and geosite rules for routes", onClick = onGeoSettings) {
+                SettingRow(stringResource(R.string.setting_geo_filtering), stringResource(R.string.setting_geo_filtering_sub), onClick = onGeoSettings) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            if (geoEnabled) "On" else "Off",
+                            if (geoEnabled) stringResource(R.string.setting_geo_on) else stringResource(R.string.setting_geo_off),
                             fontSize = 13.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold,
                             color = if (geoEnabled) Accent else Dim,
                         )
@@ -911,8 +920,8 @@ fun SettingsScreen(
                     }
                 }
             }
-            SettingsSection("Data") {
-                SettingRow("Subscriptions", "Managed server lists", onClick = onSubscriptions) {
+            SettingsSection(stringResource(R.string.section_data)) {
+                SettingRow(stringResource(R.string.setting_subscriptions), stringResource(R.string.setting_subscriptions_sub), onClick = onSubscriptions) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (subscriptionCount > 0) Text(
                             "$subscriptionCount",
@@ -922,15 +931,29 @@ fun SettingsScreen(
                     }
                 }
                 HorizontalDivider(color = Border)
-                SettingRow("Add server", "QR, clipboard or manual entry", onClick = onImport) {
+                SettingRow(stringResource(R.string.setting_add_server), stringResource(R.string.setting_add_server_sub), onClick = onImport) {
                     Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = Dim, modifier = Modifier.size(16.dp))
                 }
             }
-            SettingsSection("General") {
-                SettingRow("Connection notifications") { SmolToggle(notify, onNotify) }
+            SettingsSection(stringResource(R.string.section_general)) {
+                SettingRow(stringResource(R.string.setting_notifications)) { SmolToggle(notify, onNotify) }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    HorizontalDivider(color = Border)
+                    SettingRow(
+                        stringResource(R.string.setting_language),
+                        onClick = {
+                            context.startActivity(
+                                Intent(Settings.ACTION_APP_LOCALE_SETTINGS,
+                                    Uri.fromParts("package", context.packageName, null))
+                            )
+                        }
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = Dim, modifier = Modifier.size(18.dp))
+                    }
+                }
                 HorizontalDivider(color = Border)
-                SettingRow("App version") {
-                    Text("1.0.0", fontSize = 13.sp, color = Dim, fontFamily = FontFamily.Monospace)
+                SettingRow(stringResource(R.string.setting_app_version)) {
+                    Text(stringResource(R.string.app_version), fontSize = 13.sp, color = Dim, fontFamily = FontFamily.Monospace)
                 }
             }
         }
@@ -953,9 +976,9 @@ fun SubscriptionsScreen(
     var url by remember { mutableStateOf("") }
 
     Column(Modifier.fillMaxSize()) {
-        PushHeader("Subscriptions", onBack) {
+        PushHeader(stringResource(R.string.screen_subscriptions), onBack) {
             SmolIconBtn(onClick = { showAdd = !showAdd; onClearError() }) {
-                Icon(Icons.Default.Add, "Add", tint = TextPrimary, modifier = Modifier.size(20.dp))
+                Icon(Icons.Default.Add, stringResource(R.string.cd_add), tint = TextPrimary, modifier = Modifier.size(20.dp))
             }
         }
         Column(
@@ -964,13 +987,13 @@ fun SubscriptionsScreen(
         ) {
             AnimatedVisibility(visible = showAdd) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SectionLabel("Subscription URL")
+                    SectionLabel(stringResource(R.string.label_subscription_url))
                     OutlinedTextField(
                         value = url,
                         onValueChange = { url = it; onClearError() },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(16.dp),
-                        placeholder = { Text("https://…", color = Dim, fontFamily = FontFamily.Monospace, fontSize = 12.5.sp) },
+                        placeholder = { Text(stringResource(R.string.placeholder_url), color = Dim, fontFamily = FontFamily.Monospace, fontSize = 12.5.sp) },
                         isError = addError != null,
                         supportingText = addError?.let { err -> { Text(err, color = Danger) } },
                         singleLine = true,
@@ -990,7 +1013,7 @@ fun SubscriptionsScreen(
                             Spacer(Modifier.width(10.dp))
                         }
                         Text(
-                            if (subscriptionImporting) "Importing…" else "Import",
+                            if (subscriptionImporting) stringResource(R.string.btn_importing) else stringResource(R.string.btn_import),
                             fontWeight = FontWeight.Bold, fontSize = 15.sp,
                         )
                     }
@@ -999,10 +1022,10 @@ fun SubscriptionsScreen(
 
             if (subscriptions.isEmpty() && !showAdd) {
                 Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
-                    Text("No subscriptions yet.\nTap + to add one.", color = Dim, fontSize = 14.sp, textAlign = TextAlign.Center, lineHeight = 22.sp)
+                    Text(stringResource(R.string.subscriptions_empty), color = Dim, fontSize = 14.sp, textAlign = TextAlign.Center, lineHeight = 22.sp)
                 }
             } else if (subscriptions.isNotEmpty()) {
-                SettingsSection("Saved") {
+                SettingsSection(stringResource(R.string.section_saved)) {
                     subscriptions.forEachIndexed { i, sub ->
                         if (i > 0) HorizontalDivider(color = Border)
                         Row(
@@ -1018,7 +1041,7 @@ fun SubscriptionsScreen(
                                 Modifier.size(30.dp).clip(RoundedCornerShape(9.dp)).clickable { onDelete(sub) },
                                 contentAlignment = Alignment.Center,
                             ) {
-                                Icon(Icons.Default.Delete, "Delete", tint = Danger.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
+                                Icon(Icons.Default.Delete, stringResource(R.string.cd_delete), tint = Danger.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
                             }
                         }
                     }
@@ -1030,16 +1053,16 @@ fun SubscriptionsScreen(
 
 // ── Geo settings screen ───────────────────────────────────────────────────────
 
-private fun geoFileStatus(filesDir: java.io.File, name: String): Pair<Boolean, String> {
+private fun geoFileStatus(context: android.content.Context, filesDir: java.io.File, name: String): Pair<Boolean, String> {
     val f = java.io.File(filesDir, name)
-    if (!f.exists()) return false to "Not downloaded"
+    if (!f.exists()) return false to context.getString(R.string.geo_not_downloaded)
     val ageDays = (System.currentTimeMillis() - f.lastModified()) / (24 * 60 * 60 * 1000)
     val age = when {
-        ageDays < 1L -> "Updated today"
-        ageDays == 1L -> "Updated yesterday"
-        ageDays < 7L -> "Updated ${ageDays}d ago"
-        ageDays < 30L -> "Updated ${ageDays / 7}w ago"
-        else -> "Updated ${ageDays / 30}mo ago"
+        ageDays < 1L -> context.getString(R.string.geo_updated_today)
+        ageDays == 1L -> context.getString(R.string.geo_updated_yesterday)
+        ageDays < 7L -> context.getString(R.string.geo_updated_days_ago, ageDays.toInt())
+        ageDays < 30L -> context.getString(R.string.geo_updated_weeks_ago, (ageDays / 7).toInt())
+        else -> context.getString(R.string.geo_updated_months_ago, (ageDays / 30).toInt())
     }
     return true to age
 }
@@ -1062,11 +1085,11 @@ fun GeoSettingsScreen(
     val filesDir = context.filesDir
 
     val geoipStatus by produceState(false to "…", geoFilesVersion) {
-        value = withContext(Dispatchers.IO) { geoFileStatus(filesDir, "geoip.dat") }
+        value = withContext(Dispatchers.IO) { geoFileStatus(context, filesDir, "geoip.dat") }
     }
     val (geoipExists, geoipAge) = geoipStatus
     val geositeStatus by produceState(false to "…", geoFilesVersion) {
-        value = withContext(Dispatchers.IO) { geoFileStatus(filesDir, "geosite.dat") }
+        value = withContext(Dispatchers.IO) { geoFileStatus(context, filesDir, "geosite.dat") }
     }
     val (geositeExists, geositeAge) = geositeStatus
 
@@ -1078,7 +1101,7 @@ fun GeoSettingsScreen(
     }
 
     Column(Modifier.fillMaxSize()) {
-        PushHeader("Geo data", onBack)
+        PushHeader(stringResource(R.string.screen_geo_data), onBack)
         Column(
             Modifier
                 .fillMaxSize()
@@ -1086,14 +1109,14 @@ fun GeoSettingsScreen(
                 .padding(horizontal = 18.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(22.dp),
         ) {
-            SettingsSection("Filtering") {
-                SettingRow("Enable geo filtering", "Use geoip/geosite rules to route traffic") {
+            SettingsSection(stringResource(R.string.section_filtering)) {
+                SettingRow(stringResource(R.string.setting_enable_geo), stringResource(R.string.setting_enable_geo_sub)) {
                     SmolToggle(geoEnabled, onGeoEnabled)
                 }
             }
 
             if (geoEnabled) {
-                SettingsSection("Files") {
+                SettingsSection(stringResource(R.string.section_files)) {
                     GeoFileRow(
                         name = "geoip.dat", status = geoipAge, exists = geoipExists,
                         onImport = { geoipLauncher.launch(arrayOf("*/*")) },
@@ -1105,7 +1128,7 @@ fun GeoSettingsScreen(
                     )
                 }
 
-                SettingsSection("Source") {
+                SettingsSection(stringResource(R.string.section_source)) {
                     Column(
                         Modifier
                             .fillMaxWidth()
@@ -1113,8 +1136,8 @@ fun GeoSettingsScreen(
                             .padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
-                        GeoUrlField("geoip.dat URL", geoipUrl, onGeoipUrl)
-                        GeoUrlField("geosite.dat URL", geositeUrl, onGeositeUrl)
+                        GeoUrlField(stringResource(R.string.label_geoip_url), geoipUrl, onGeoipUrl)
+                        GeoUrlField(stringResource(R.string.label_geosite_url), geositeUrl, onGeositeUrl)
                         TextButton(
                             onClick = {
                                 onGeoipUrl(GeoUpdater.DEFAULT_GEOIP_URL)
@@ -1122,7 +1145,7 @@ fun GeoSettingsScreen(
                             },
                             contentPadding = PaddingValues(0.dp),
                         ) {
-                            Text("Reset to defaults", color = Dim, fontSize = 13.sp)
+                            Text(stringResource(R.string.btn_reset_defaults), color = Dim, fontSize = 13.sp)
                         }
                     }
                 }
@@ -1146,7 +1169,7 @@ fun GeoSettingsScreen(
                     }
                     Spacer(Modifier.width(10.dp))
                     Text(
-                        if (geoUpdating) "Updating…" else "Update now",
+                        if (geoUpdating) stringResource(R.string.btn_updating) else stringResource(R.string.btn_update_now),
                         fontSize = 16.sp, fontWeight = FontWeight.Bold,
                     )
                 }
@@ -1163,7 +1186,7 @@ fun GeoFileRow(name: String, status: String, exists: Boolean, onImport: () -> Un
         onClick = onImport,
     ) {
         Text(
-            "Import",
+            stringResource(R.string.btn_geo_import),
             fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
             color = if (exists) Dim else Accent,
         )
@@ -1252,7 +1275,7 @@ fun EditServerScreen(config: Config, onSave: (Config) -> Unit, onDelete: () -> U
     var uri by remember(config.id) { mutableStateOf(config.vlessLink ?: config.configJson ?: "") }
 
     Column(Modifier.fillMaxSize()) {
-        PushHeader("Edit server", onBack) {
+        PushHeader(stringResource(R.string.screen_edit_server), onBack) {
             Button(
                 onClick = {
                     val updated = if (config.vlessLink != null) config.copy(name = name, vlessLink = uri)
@@ -1262,7 +1285,7 @@ fun EditServerScreen(config: Config, onSave: (Config) -> Unit, onDelete: () -> U
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = OnAccent),
                 contentPadding = PaddingValues(horizontal = 18.dp, vertical = 9.dp),
-            ) { Text("Save", fontWeight = FontWeight.Bold) }
+            ) { Text(stringResource(R.string.btn_save), fontWeight = FontWeight.Bold) }
         }
         Column(
             Modifier
@@ -1272,7 +1295,7 @@ fun EditServerScreen(config: Config, onSave: (Config) -> Unit, onDelete: () -> U
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             Column {
-                SectionLabel("Name")
+                SectionLabel(stringResource(R.string.label_name))
                 OutlinedTextField(
                     value = name, onValueChange = { name = it },
                     modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), singleLine = true,
@@ -1280,7 +1303,7 @@ fun EditServerScreen(config: Config, onSave: (Config) -> Unit, onDelete: () -> U
                 )
             }
             Column {
-                SectionLabel("VLESS URI / JSON")
+                SectionLabel(stringResource(R.string.label_vless_uri_json))
                 OutlinedTextField(
                     value = uri, onValueChange = { uri = it },
                     modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp),
@@ -1298,7 +1321,7 @@ fun EditServerScreen(config: Config, onSave: (Config) -> Unit, onDelete: () -> U
             ) {
                 Icon(Icons.Default.Delete, null, modifier = Modifier.size(17.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("Delete server", fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.btn_delete_server), fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -1330,7 +1353,7 @@ fun ImportScreen(
     var subscriptionUrl by remember { mutableStateOf("") }
 
     Column(Modifier.fillMaxSize()) {
-        PushHeader("Add a server", onBack)
+        PushHeader(stringResource(R.string.screen_add_server), onBack)
         Column(
             Modifier
                 .fillMaxSize()
@@ -1351,31 +1374,31 @@ fun ImportScreen(
                 Icon(Icons.Default.QrCode, null, tint = Dim, modifier = Modifier.size(72.dp))
             }
             Spacer(Modifier.height(14.dp))
-            SectionLabel("or add another way", modifier = Modifier.align(Alignment.CenterHorizontally))
+            SectionLabel(stringResource(R.string.label_or_add_another_way), modifier = Modifier.align(Alignment.CenterHorizontally))
             Spacer(Modifier.height(4.dp))
 
             ImportOption(
                 icon = { Icon(Icons.Default.QrCode, null, tint = Accent, modifier = Modifier.size(22.dp)) },
-                title = "Scan QR code", sub = "Point the camera at a VLESS QR",
-                onClick = { onToast("QR scan coming soon") },
+                title = stringResource(R.string.import_scan_qr_title), sub = stringResource(R.string.import_scan_qr_sub),
+                onClick = { onToast(context.getString(R.string.toast_qr_coming_soon)) },
             )
             Spacer(Modifier.height(11.dp))
             ImportOption(
                 icon = { Icon(Icons.Default.ContentPaste, null, tint = Accent, modifier = Modifier.size(20.dp)) },
-                title = "Paste from clipboard", sub = "vless:// link or JSON config",
+                title = stringResource(R.string.import_paste_title), sub = stringResource(R.string.import_paste_sub),
                 onClick = {
                     val clip = (context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager)
                         ?.primaryClip?.getItemAt(0)?.text?.toString().orEmpty()
                     if (clip.isNotBlank()) {
                         manualInput = clip; expanded = "manual"; onClearError()
                     }
-                    else onToast("Clipboard is empty")
+                    else onToast(context.getString(R.string.toast_clipboard_empty))
                 },
             )
             Spacer(Modifier.height(11.dp))
             ImportOption(
                 icon = { Icon(Icons.Default.Link, null, tint = Accent, modifier = Modifier.size(20.dp)) },
-                title = "Subscription link", sub = "A URL returning a list of servers",
+                title = stringResource(R.string.import_subscription_title), sub = stringResource(R.string.import_subscription_sub),
                 onClick = {
                     expanded =
                         if (expanded == "subscription") null else "subscription"; onClearError()
@@ -1384,7 +1407,7 @@ fun ImportScreen(
             Spacer(Modifier.height(11.dp))
             ImportOption(
                 icon = { Icon(Icons.Default.Edit, null, tint = Accent, modifier = Modifier.size(19.dp)) },
-                title = "Enter manually", sub = "Type or paste the config",
+                title = stringResource(R.string.import_manual_title), sub = stringResource(R.string.import_manual_sub),
                 onClick = {
                     expanded = if (expanded == "manual") null else "manual"; onClearError()
                 },
@@ -1392,7 +1415,7 @@ fun ImportScreen(
 
             AnimatedVisibility(visible = expanded == "subscription") {
                 Column(Modifier.padding(top = 18.dp)) {
-                    SectionLabel("Subscription URL")
+                    SectionLabel(stringResource(R.string.label_subscription_url))
                     OutlinedTextField(
                         value = subscriptionUrl,
                         onValueChange = { subscriptionUrl = it; onClearError() },
@@ -1400,7 +1423,7 @@ fun ImportScreen(
                         shape = RoundedCornerShape(16.dp),
                         placeholder = {
                             Text(
-                                "https://…",
+                                stringResource(R.string.placeholder_url),
                                 color = Dim,
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 12.5.sp
@@ -1436,7 +1459,7 @@ fun ImportScreen(
                             Spacer(Modifier.width(10.dp))
                         }
                         Text(
-                            if (subscriptionImporting) "Importing…" else "Import servers",
+                            if (subscriptionImporting) stringResource(R.string.btn_importing) else stringResource(R.string.btn_import_servers),
                             fontWeight = FontWeight.Bold, fontSize = 15.sp,
                         )
                     }
@@ -1445,7 +1468,7 @@ fun ImportScreen(
 
             AnimatedVisibility(visible = expanded == "manual") {
                 Column(Modifier.padding(top = 18.dp)) {
-                    SectionLabel("vless:// link or JSON config")
+                    SectionLabel(stringResource(R.string.label_vless_or_json))
                     OutlinedTextField(
                         value = manualInput,
                         onValueChange = { manualInput = it; onClearError() },
@@ -1465,7 +1488,7 @@ fun ImportScreen(
                         shape = RoundedCornerShape(16.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = OnAccent),
                         contentPadding = PaddingValues(14.dp),
-                    ) { Text("Add server", fontWeight = FontWeight.Bold, fontSize = 15.sp) }
+                    ) { Text(stringResource(R.string.btn_add_server_action), fontWeight = FontWeight.Bold, fontSize = 15.sp) }
                 }
             }
         }
@@ -1534,11 +1557,14 @@ fun AppPickerDialog(allowedApps: Set<String>, onDismiss: () -> Unit, onConfirm: 
                 .clip(RoundedCornerShape(22.dp))
                 .background(Surface)
         ) {
-            Text("Split tunneling", fontSize = 19.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary,
-                modifier = Modifier.padding(start = 24.dp, top = 24.dp, end = 24.dp, bottom = 16.dp))
+            Text(stringResource(R.string.dialog_split_title), fontSize = 19.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary,
+                modifier = Modifier.padding(start = 24.dp, top = 24.dp, end = 24.dp, bottom = 4.dp))
+            Text(stringResource(R.string.dialog_split_desc),
+                fontSize = 13.sp, color = Dim,
+                modifier = Modifier.padding(start = 24.dp, end = 24.dp, bottom = 12.dp))
             OutlinedTextField(
                 value = query, onValueChange = { query = it },
-                placeholder = { Text("Search", color = Dim) },
+                placeholder = { Text(stringResource(R.string.search_hint), color = Dim) },
                 singleLine = true,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1611,16 +1637,16 @@ fun AppPickerDialog(allowedApps: Set<String>, onDismiss: () -> Unit, onConfirm: 
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (selected.isNotEmpty()) {
-                    TextButton(onClick = { selected = emptySet() }) { Text("Clear", color = Dim) }
+                    TextButton(onClick = { selected = emptySet() }) { Text(stringResource(R.string.btn_clear), color = Dim) }
                 }
                 Spacer(Modifier.weight(1f))
-                TextButton(onClick = onDismiss) { Text("Cancel", color = Dim) }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.btn_cancel), color = Dim) }
                 Spacer(Modifier.width(8.dp))
                 Button(
                     onClick = { onConfirm(selected) },
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = OnAccent),
-                ) { Text("Save", fontWeight = FontWeight.Bold) }
+                ) { Text(stringResource(R.string.btn_save), fontWeight = FontWeight.Bold) }
             }
         }
     }
@@ -1642,8 +1668,8 @@ fun GeoUpdateBanner(onSkip: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         CircularProgressIndicator(Modifier.size(20.dp), color = Accent, strokeWidth = 2.dp)
-        Text("Updating geo databases…", fontSize = 14.sp, color = Dim, modifier = Modifier.weight(1f))
-        TextButton(onClick = onSkip) { Text("Skip", color = Accent) }
+        Text(stringResource(R.string.geo_updating_banner), fontSize = 14.sp, color = Dim, modifier = Modifier.weight(1f))
+        TextButton(onClick = onSkip) { Text(stringResource(R.string.btn_skip), color = Accent) }
     }
 }
 // END GEO UPDATE
