@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.swiss.android"
+    namespace = "com.green.android"
     compileSdk {
         version = release(36) {
             minorApiLevel = 1
@@ -13,7 +13,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.swiss.android"
+        applicationId = "com.green.android"
         minSdk = 26
         targetSdk = 36
         versionCode = 1
@@ -30,7 +30,7 @@ android {
     buildTypes {
         debug {
             applicationIdSuffix = ".dev"
-            resValue("string", "app_name", "swiss.dev")
+            resValue("string", "app_name", "green.dev")
         }
         release {
             isMinifyEnabled = false
@@ -82,7 +82,7 @@ val buildGoLib = tasks.register<Exec>("buildGoLib") {
 }
 
 tasks.named("preBuild") {
-    dependsOn(buildGoLib)
+    if (System.getenv("CI") != "true") dependsOn(buildGoLib)
 }
 
 dependencies {

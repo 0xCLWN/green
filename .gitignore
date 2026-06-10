@@ -27,8 +27,11 @@ local.properties
 .cxx
 
 # ---- Generated libs (gomobile output) ----
-app/libs/*.aar
 app/libs/*.jar
+
+# ---- Release artifacts ----
+green-release.apk
+green-release.apk.idsig
 
 # ---- Docker ----
 .env
