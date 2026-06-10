@@ -15,6 +15,8 @@
 
 # ---- Secrets ----
 app/src/main/assets/default_config.json
+default_config.json
+default_keys.txt
 *.jks
 *.p12
 
@@ -30,8 +32,8 @@ local.properties
 app/libs/*.jar
 
 # ---- Release artifacts ----
-green-release.apk
-green-release.apk.idsig
+*-release.apk
+*-release.apk.idsig
 
 # ---- Docker ----
 .env

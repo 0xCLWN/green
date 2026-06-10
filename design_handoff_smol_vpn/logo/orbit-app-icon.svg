@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none">
+  <title>smol vpn — Orbit app icon</title>
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1F2B25"></stop>
+      <stop offset="1" stop-color="#0C120F"></stop>
+    </linearGradient>
+    <radialGradient id="aura" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#57E08A" stop-opacity=".35"></stop>
+      <stop offset="1" stop-color="#57E08A" stop-opacity="0"></stop>
+    </radialGradient>
+    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="9" result="b"></feGaussianBlur>
+      <feMerge><feMergeNode in="b"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="115" fill="url(#tile)"></rect>
+  <rect width="512" height="512" rx="115" fill="none" stroke="#33433C" stroke-width="2"></rect>
+  <circle cx="256" cy="256" r="150" fill="url(#aura)"></circle>
+  <g transform="translate(256 256) scale(2.7) translate(-50 -50)" fill="none">
+    <circle cx="50" cy="50" r="34" stroke="#33433C" stroke-width="6"></circle>
+    <circle cx="50" cy="50" r="34" stroke="#57E08A" stroke-width="6" stroke-linecap="round" stroke-dasharray="56 220" transform="rotate(-90 50 50)"></circle>
+    <circle cx="50" cy="50" r="9" fill="#57E08A" filter="url(#glow)"></circle>
+  </g>
+</svg>
