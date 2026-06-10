@@ -60,10 +60,12 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.CallSplit
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
@@ -147,6 +149,7 @@ sealed class NavScreen {
     object Home : NavScreen()
     object Settings : NavScreen()
     object GeoSettings : NavScreen()
+    object DisguiseSettings : NavScreen()
     object Subscriptions : NavScreen()
     data class Edit(val config: Config) : NavScreen()
     object Import : NavScreen()
@@ -170,6 +173,7 @@ fun VpnApp(viewModel: VpnViewModel) {
     val subscriptionImporting by viewModel.subscriptionImporting.collectAsState()
     val autoConnect by viewModel.autoConnect.collectAsState()
     val notify by viewModel.notify.collectAsState()
+    val disguise by viewModel.disguise.collectAsState()
     val geo by viewModel.geo.collectAsState()
     val subscriptions by viewModel.subscriptions.collectAsState()
 
@@ -221,7 +225,7 @@ fun VpnApp(viewModel: VpnViewModel) {
     // Intercept back when pushed screen is open
     BackHandler(enabled = screen != NavScreen.Home) {
         screen = when (screen) {
-            NavScreen.GeoSettings, NavScreen.Import, NavScreen.Subscriptions -> NavScreen.Settings
+            NavScreen.GeoSettings, NavScreen.Import, NavScreen.Subscriptions, NavScreen.DisguiseSettings -> NavScreen.Settings
             else -> NavScreen.Home
         }
         viewModel.clearAddError()
@@ -271,8 +275,13 @@ fun VpnApp(viewModel: VpnViewModel) {
             onShakeDone = { shake = false },
         )
 
-        PushedScreen(visible = screen == NavScreen.Settings || screen == NavScreen.GeoSettings || screen == NavScreen.Import || screen == NavScreen.Subscriptions) {
+        PushedScreen(visible = screen == NavScreen.Settings || screen == NavScreen.GeoSettings || screen == NavScreen.DisguiseSettings || screen == NavScreen.Import || screen == NavScreen.Subscriptions) {
             when (screen) {
+                NavScreen.DisguiseSettings -> DisguiseSettingsScreen(
+                    disguise = disguise,
+                    onDisguise = { viewModel.setDisguise(it) },
+                    onBack = { screen = NavScreen.Settings },
+                )
                 NavScreen.GeoSettings -> GeoSettingsScreen(
                     geoEnabled = geo.enabled, onGeoEnabled = { viewModel.setGeoEnabled(it) },
                     geoipUrl = geo.geoipUrl, onGeoipUrl = { viewModel.setGeoipUrl(it) },
@@ -304,12 +313,14 @@ fun VpnApp(viewModel: VpnViewModel) {
                 else -> SettingsScreen(
                     autoConnect = autoConnect, onAutoConnect = { viewModel.setAutoConnect(it) },
                     notify = notify, onNotify = { viewModel.setNotify(it) },
+                    disguise = disguise,
                     allowedApps = allowedApps,
                     geoEnabled = geo.enabled,
                     subscriptionCount = subscriptions.size,
                     onSplit = { showAppPicker = true },
                     onImport = { screen = NavScreen.Import },
                     onGeoSettings = { screen = NavScreen.GeoSettings },
+                    onDisguiseSettings = { screen = NavScreen.DisguiseSettings },
                     onSubscriptions = { screen = NavScreen.Subscriptions },
                     onBack = { screen = NavScreen.Home },
                 )
@@ -873,12 +884,14 @@ fun PushHeader(title: String, onBack: () -> Unit, trailing: (@Composable () -> U
 fun SettingsScreen(
     autoConnect: Boolean, onAutoConnect: (Boolean) -> Unit,
     notify: Boolean, onNotify: (Boolean) -> Unit,
+    disguise: String,
     allowedApps: Set<String>,
     geoEnabled: Boolean,
     subscriptionCount: Int,
     onSplit: () -> Unit,
     onImport: () -> Unit,
     onGeoSettings: () -> Unit,
+    onDisguiseSettings: () -> Unit,
     onSubscriptions: () -> Unit,
     onBack: () -> Unit,
 ) {
@@ -936,6 +949,21 @@ fun SettingsScreen(
                 }
             }
             SettingsSection(stringResource(R.string.section_general)) {
+                SettingRow(stringResource(R.string.setting_disguise), onClick = onDisguiseSettings) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            when (disguise) {
+                                "alfa_bank"  -> stringResource(R.string.setting_disguise_alfa)
+                                "calculator" -> stringResource(R.string.setting_disguise_calc)
+                                else         -> stringResource(R.string.setting_disguise_default)
+                            },
+                            fontSize = 13.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold,
+                            color = if (disguise == "default") Dim else Accent,
+                        )
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = Dim, modifier = Modifier.size(16.dp))
+                    }
+                }
+                HorizontalDivider(color = Border)
                 SettingRow(stringResource(R.string.setting_notifications)) { SmolToggle(notify, onNotify) }
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     HorizontalDivider(color = Border)
@@ -1243,6 +1271,68 @@ fun SettingRow(
             if (sub != null) Text(sub, fontSize = 12.sp, color = Dim, modifier = Modifier.padding(top = 2.dp))
         }
         trailing()
+    }
+}
+
+// ── Disguise settings screen ──────────────────────────────────────────────────
+
+@Composable
+fun DisguiseSettingsScreen(
+    disguise: String,
+    onDisguise: (String) -> Unit,
+    onBack: () -> Unit,
+) {
+    val options = listOf(
+        "default"    to stringResource(R.string.disguise_option_default),
+        "alfa_bank"  to stringResource(R.string.disguise_option_alfa),
+        "calculator" to stringResource(R.string.disguise_option_calculator),
+    )
+    Column(Modifier.fillMaxSize()) {
+        PushHeader(stringResource(R.string.screen_disguise), onBack)
+        Column(
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 18.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(22.dp),
+        ) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0x22E8A24A))
+                    .padding(14.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Icon(
+                    Icons.Filled.Info, null,
+                    tint = Warn,
+                    modifier = Modifier.size(16.dp).padding(top = 1.dp),
+                )
+                Text(
+                    stringResource(R.string.disguise_restart_warning),
+                    fontSize = 13.sp,
+                    color = Warn,
+                    lineHeight = 18.sp,
+                )
+            }
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .border(1.dp, Border, RoundedCornerShape(16.dp))
+            ) {
+                options.forEachIndexed { index, (key, label) ->
+                    if (index > 0) HorizontalDivider(color = Border)
+                    SettingRow(label, onClick = { if (disguise != key) onDisguise(key) }) {
+                        if (disguise == key) {
+                            Icon(Icons.Filled.Check, null, tint = Accent, modifier = Modifier.size(18.dp))
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

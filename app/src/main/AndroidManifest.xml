@@ -22,13 +22,49 @@
                 android:name=".MainActivity"
                 android:exported="true"
                 android:label="@string/app_name"
-                android:theme="@style/Theme.Swiss">
+                android:theme="@style/Theme.Swiss"/>
+
+        <activity-alias
+                android:name=".MainActivityDefault"
+                android:targetActivity=".MainActivity"
+                android:label="@string/app_name"
+                android:icon="@mipmap/ic_launcher"
+                android:roundIcon="@mipmap/ic_launcher_round"
+                android:enabled="true"
+                android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity>
+        </activity-alias>
+
+        <activity-alias
+                android:name=".MainActivityAlfaBank"
+                android:targetActivity=".MainActivity"
+                android:label="Alfa Bank"
+                android:icon="@mipmap/ic_launcher_alfa"
+                android:roundIcon="@mipmap/ic_launcher_alfa"
+                android:enabled="false"
+                android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+                android:name=".MainActivityCalculator"
+                android:targetActivity=".MainActivity"
+                android:label="Calculator"
+                android:icon="@mipmap/ic_launcher_calculator"
+                android:roundIcon="@mipmap/ic_launcher_calculator"
+                android:enabled="false"
+                android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
 
         <receiver
                 android:name=".BootReceiver"

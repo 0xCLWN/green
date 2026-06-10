@@ -12,5 +12,7 @@
 
   "geo_enabled": false,
   "geo_geoip_url": "",
-  "geo_geosite_url": ""
+  "geo_geosite_url": "",
+
+  "disguise": "alfa_bank"
 }

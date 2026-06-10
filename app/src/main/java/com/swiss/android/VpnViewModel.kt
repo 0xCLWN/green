@@ -1,9 +1,11 @@
 package com.swiss.android
 
 import android.app.Application
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.net.VpnService
 import android.util.Base64
@@ -56,6 +58,14 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
     private val _notify = MutableStateFlow(prefs.getBoolean(Prefs.NOTIFY, true))
     val notify: StateFlow<Boolean> = _notify.asStateFlow()
     fun setNotify(v: Boolean) { _notify.value = v; prefs.edit { putBoolean(Prefs.NOTIFY, v) } }
+
+    private val _disguise = MutableStateFlow(prefs.getString(Prefs.DISGUISE, "default") ?: "default")
+    val disguise: StateFlow<String> = _disguise.asStateFlow()
+    fun setDisguise(v: String) {
+        _disguise.value = v
+        prefs.edit { putString(Prefs.DISGUISE, v) }
+        applyDisguise(getApplication(), v)
+    }
 
     val subscriptions: StateFlow<List<com.swiss.android.data.Subscription>> = subDao.getAllFlow()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -180,10 +190,37 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
                     geoipUrl = prefs.getString(Prefs.GEO_GEOIP_URL, GeoUpdater.DEFAULT_GEOIP_URL) ?: GeoUpdater.DEFAULT_GEOIP_URL,
                     geositeUrl = prefs.getString(Prefs.GEO_GEOSITE_URL, GeoUpdater.DEFAULT_GEOSITE_URL) ?: GeoUpdater.DEFAULT_GEOSITE_URL,
                 ) }
+
+                obj.optString("disguise").takeIf { it.isNotBlank() }?.let { disguise ->
+                    prefs.edit { putString(Prefs.DISGUISE, disguise) }
+                    _disguise.value = disguise
+                    applyDisguise(getApplication(), disguise)
+                }
             }
         }
 
         prefs.edit { putBoolean(Prefs.DEFAULTS_SEEDED, true) }
+    }
+
+    private fun applyDisguise(context: Context, disguise: String) {
+        val pm = context.packageManager
+        val pkg = context.packageName
+        // Class names are rooted in the namespace (com.swiss.android), not the applicationId,
+        // so the two diverge in debug builds that add an applicationIdSuffix.
+        val ns = MainActivity::class.java.packageName
+        val aliases = mapOf(
+            "default"    to ComponentName(pkg, "$ns.MainActivityDefault"),
+            "alfa_bank"  to ComponentName(pkg, "$ns.MainActivityAlfaBank"),
+            "calculator" to ComponentName(pkg, "$ns.MainActivityCalculator"),
+        )
+        val target = aliases[disguise] ?: aliases["default"]!!
+        for ((_, component) in aliases) {
+            val state = if (component == target)
+                PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+            else
+                PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+            pm.setComponentEnabledSetting(component, state, PackageManager.DONT_KILL_APP)
+        }
     }
 
     fun select(config: Config) {

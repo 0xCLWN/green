@@ -13,6 +13,7 @@ object Prefs {
     const val GEO_ENABLED    = "geo_enabled"
     const val GEO_GEOIP_URL  = "geo_geoip_url"
     const val GEO_GEOSITE_URL = "geo_geosite_url"
+    const val DISGUISE       = "disguise"
 }
 
 private val countryCodeRegex = Regex("_([a-zA-Z]{2})$")
